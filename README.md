@@ -1,6 +1,8 @@
 # Natter
 帮助 Full cone NAT (NAT 1) 用户打开公网 TCP 端口。  
-
+<p align="right">
+交流群组：<a href="https://jq.qq.com/?_wv=1027&k=EYXohGpC">Q 657590400</a> | <a href="https://t.me/+VS5sjOWGgzsyYjY1">TG</a>
+</p>
 
 ## 使用例
 在本地 3456 号 TCP 端口上实行 TCP 打洞，并开启测试用 HTTP 服务：
