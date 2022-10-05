@@ -4,7 +4,8 @@
 交流群组：<a href="https://jq.qq.com/?_wv=1027&k=EYXohGpC">Q 657590400</a> | <a href="https://t.me/+VS5sjOWGgzsyYjY1">TG</a>
 </p>
 
-**注意：目前的 Natter 是半成品！** Natter 的参数列表和行为将来可能会发生改变。
+**注意：目前的 Natter 是半成品！** Natter 的参数列表和行为将来可能会发生改变。  
+ - 更多实验性功能（UDP等），见 [v0.9](https://github.com/MikeWang000000/Natter/tree/v0.9) 分支。
 
 ## 使用例
 在本地 3456 号 TCP 端口上实行 TCP 打洞，并开启测试用 HTTP 服务：
