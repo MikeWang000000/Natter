@@ -2,20 +2,46 @@ import threading
 import socket
 import struct
 import codecs
+import json
 import time
 import sys
 import os
+
+__version__ = "0.9.0"
 
 
 # Fix OpenWRT Python codecs issues:
 #   Always fallback to ASCII when specified codec is not available.
 try:
-    codecs.lookup('idna')
-    codecs.lookup('utf-8')
+    codecs.lookup("idna")
+    codecs.lookup("utf-8")
 except LookupError:
     def search_codec(_):
-        return codecs.CodecInfo(codecs.ascii_encode, codecs.ascii_decode, name='ascii')
+        return codecs.CodecInfo(codecs.ascii_encode, codecs.ascii_decode, name="ascii")
     codecs.register(search_codec)
+
+
+def get_free_port(udp=False):
+    if udp:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+    else:
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    # Not all OS have a SO_REUSEPORT option
+    if "SO_REUSEPORT" in dir(socket):
+        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    sock.bind(("", 0))
+    ret = sock.getsockname()[1]
+    sock.close()
+    return ret
+
+
+def test_port_open(dst_addr, timeout = 3):
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(timeout)
+    result = sock.connect_ex(dst_addr)
+    sock.close()
+    return result == 0
 
 
 class Logger(object):
@@ -24,28 +50,33 @@ class Logger(object):
     WARNING = 3
     ERROR = 4
 
-    def __init__(self, level = INFO):
+    def __init__(self, level = INFO, files = (sys.stderr,)):
         self.level = level
+        self.files = files
 
     def debug(self, msg):
         if self.level <= Logger.DEBUG:
-            sys.stdout.write("[DEBUG] - " + str(msg) + "\n")
-            sys.stdout.flush()
+            for fo in self.files:
+                fo.write("[DEBUG] - " + str(msg) + "\n")
+                fo.flush()
 
     def info(self, msg):
         if self.level <= Logger.INFO:
-            sys.stdout.write("[INFO] - " + str(msg) + "\n")
-            sys.stdout.flush()
+            for fo in self.files:
+                fo.write("[INFO] - " + str(msg) + "\n")
+                fo.flush()
 
     def warning(self, msg):
         if self.level <= Logger.WARNING:
-            sys.stderr.write("[WARNING] - " + str(msg) + "\n")
-            sys.stderr.flush()
+            for fo in self.files:
+                fo.write("[WARNING] - " + str(msg) + "\n")
+                fo.flush()
 
     def error(self, msg):
         if self.level <= Logger.ERROR:
-            sys.stderr.write("[ERROR] - " + str(msg) + "\n")
-            sys.stderr.flush()
+            for fo in self.files:
+                fo.write("[ERROR] - " + str(msg) + "\n")
+                fo.flush()
 
 
 class StunClient(object):
@@ -73,6 +104,10 @@ class StunClient(object):
         "stun.miwifi.com",
         "stun.qq.com"
     ]
+
+    _stun_ip_tcp = []
+    _stun_ip_udp = []
+
     MTU         = 1500
     STUN_PORT   = 3478
     MAGIC_COOKIE    = 0x2112a442
@@ -92,54 +127,45 @@ class StunClient(object):
     NAT_SYMMETRIC        = 4
     NAT_SYM_UDP_FIREWALL = 5
 
-    def __init__(self, source_ip = "0.0.0.0", log_level = Logger.INFO):
-        self.logger = Logger(log_level)
+    def __init__(self, source_ip = "0.0.0.0", logger = None):
+        self.logger = logger if logger else Logger()
         self.source_ip = source_ip
-        self.stun_ip_tcp = []
-        self.stun_ip_udp = []
         if not self.check_reuse_ability():
             raise OSError("This OS or Python does not support reusing ports!")
-        self.logger.info("Getting STUN server IP...")
-        for hostname in self.stun_server_tcp:
-            self.stun_ip_tcp.extend(self.resolve_hostname(hostname))
-        for hostname in self.stun_server_udp:
-            self.stun_ip_udp.extend(self.resolve_hostname(hostname))
-        if not self.stun_ip_tcp or not self.stun_ip_udp:
+        if not self._stun_ip_tcp or not self._stun_ip_udp:
+            self.logger.info("Getting STUN server IP...")
+            for hostname in self.stun_server_tcp:
+                self._stun_ip_tcp.extend(
+                    ip for ip in self.resolve_hostname(hostname) if ip not in self._stun_ip_tcp
+                )
+            for hostname in self.stun_server_udp:
+                self._stun_ip_udp.extend(
+                    ip for ip in self.resolve_hostname(hostname) if ip not in self._stun_ip_udp
+                )
+        if not self._stun_ip_tcp or not self._stun_ip_udp:
             raise Exception("No public STUN server is avaliable. Please check your Internet connection.")
-
-    def get_free_port(self, udp=False):
-        if udp:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        else:
-            sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if 'SO_REUSEPORT' in dir(socket):
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        sock.bind(('', 0))
-        ret = sock.getsockname()[1]
-        sock.close()
-        return ret
 
     def check_reuse_ability(self):
         try:
-            test_port = self.get_free_port()
+            # A simple test: listen on the same port
+            test_port = get_free_port()
             s1 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s1.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if 'SO_REUSEPORT' in dir(socket):
+            if "SO_REUSEPORT" in dir(socket):
                 s1.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            s1.bind(("0.0.0.0", test_port))
-            s1.listen(1)
+            s1.bind(("", test_port))
+            s1.listen(5)
             s2 = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
             s2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if 'SO_REUSEPORT' in dir(socket):
+            if "SO_REUSEPORT" in dir(socket):
                 s2.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            s2.bind(("0.0.0.0", test_port))
-            s2.listen(1)
+            s2.bind(("", test_port))
+            s2.listen(5)
             s1.close()
             s2.close()
             return True
         except OSError as e:
-            self.logger.debug("%s: %s" % (e.__class__.__name__, e))
+            self.logger.debug("Cannot reuse: %s: %s" % (e.__class__.__name__, e))
             return False
 
     def resolve_hostname(self, hostname):
@@ -148,7 +174,7 @@ class StunClient(object):
             host, alias, ip_addresses = socket.gethostbyname_ex(hostname)
             return ip_addresses
         except Exception as e:
-            self.logger.debug("%s: %s" % (e.__class__.__name__, e))
+            self.logger.debug("Cannot resolve: %s: %s" % (e.__class__.__name__, e))
             return []
 
     def random_tran_id(self, use_magic_cookie = False):
@@ -168,7 +194,7 @@ class StunClient(object):
         payload = data[20:20 + msg_length]
         return msg_type, tran_id, payload
 
-    def get_mapped_addr(self, payload):
+    def extract_mapped_addr(self, payload):
         while payload:
             attrib_type, attrib_length = struct.unpack("!HH", payload[:4])
             attrib_value = payload[4:4 + attrib_length]
@@ -196,7 +222,7 @@ class StunClient(object):
         try:
             sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
             sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if 'SO_REUSEPORT' in dir(socket):
+            if "SO_REUSEPORT" in dir(socket):
                 sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
             sock.settimeout(timeout)
             sock.bind((self.source_ip, source_port))
@@ -207,7 +233,7 @@ class StunClient(object):
             msg_type, msg_id, payload = self.unpack_stun_message(buf)
             if tran_id == msg_id and msg_type == self.BIND_RESPONSE:
                 source_addr  = sock.getsockname()
-                mapped_addr = self.get_mapped_addr(payload)
+                mapped_addr = self.extract_mapped_addr(payload)
                 ret = source_addr, mapped_addr
                 self.logger.debug("(TCP) %s says: %s" % (stun_host, mapped_addr))
             else:
@@ -215,25 +241,30 @@ class StunClient(object):
             sock.shutdown(socket.SHUT_RDWR)
             sock.close()
         except Exception as e:
-            self.logger.debug("%s: %s" % (e.__class__.__name__, e))
+            self.logger.debug("Cannot do TCP STUN test: %s: %s" % (e.__class__.__name__, e))
             sock.close()
             ret = None
         return ret
 
-    def udp_test(self, stun_host, source_port, change_ip = False, change_port = False, timeout = 1, repeat = 3):
+    def udp_test(self, stun_host, source_port, change_ip = False, change_port = False, timeout = 1, repeat = 3, custom_sock = None):
         # Note:
-        #     Assuming STUN is being multiplexed with other protocols,
-        #     the packet must be inspected to check if it is a STUN packet.
+        #   Assuming STUN is being multiplexed with other protocols,
+        #   the packet must be inspected to check if it is a STUN packet.
+        #   Parameter source_port has no effect when custom_sock is set
         self.logger.debug("Trying UDP STUN: %s (change ip:%d/port:%d)" % (stun_host, change_ip, change_port))
         time_start = time.time()
         tran_id = self.random_tran_id()
-        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        if custom_sock is None:
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        else:
+            sock = custom_sock
+        origin_timeout = sock.gettimeout()
         try:
-            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-            if 'SO_REUSEPORT' in dir(socket):
-                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-            sock.settimeout(timeout)
-            sock.bind((self.source_ip, source_port))
+            if sock is not custom_sock:
+                sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                if "SO_REUSEPORT" in dir(socket):
+                    sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                sock.bind((self.source_ip, source_port))
             flags = 0
             if change_ip:
                 flags |= self.CHANGE_IP
@@ -254,46 +285,48 @@ class StunClient(object):
                 sock.settimeout(time_left)
                 buf, recv_addr = sock.recvfrom(self.MTU)
                 recv_host, recv_port = recv_addr
-                # check STUN packet
+                # Check the STUN packet.
                 if len(buf) < 20:
                     continue
                 msg_type, msg_id, payload = self.unpack_stun_message(buf)
                 if tran_id != msg_id or msg_type != self.BIND_RESPONSE:
                     continue
                 source_addr  = sock.getsockname()
-                mapped_addr  = self.get_mapped_addr(payload)
+                mapped_addr  = self.extract_mapped_addr(payload)
                 ip_changed   = (recv_host != self.STUN_PORT)
                 port_changed = (recv_port != self.STUN_PORT)
                 self.logger.debug("(UDP) %s says: %s" % (recv_addr, mapped_addr))
                 return source_addr, mapped_addr, ip_changed, port_changed
         except Exception as e:
-            self.logger.debug("%s: %s" % (e.__class__.__name__, e))
+            self.logger.debug("Cannot do UDP STUN test: %s: %s" % (e.__class__.__name__, e))
             return None
         finally:
-            sock.close()
+            sock.settimeout(origin_timeout)
+            if sock is not custom_sock:
+                sock.close()
 
     def get_tcp_mapping(self, source_port):
-        server_ip = first = self.stun_ip_tcp[0]
+        server_ip = first = self._stun_ip_tcp[0]
         while True:
             ret = self.tcp_test(server_ip, source_port)
             if ret is None:
-                # server unavailable, put it at the end of the list
-                self.stun_ip_tcp.append(self.stun_ip_tcp.pop(0))
-                server_ip = self.stun_ip_tcp[0]
+                # Server unavailable, put it at the end of the list.
+                self._stun_ip_tcp.append(self._stun_ip_tcp.pop(0))
+                server_ip = self._stun_ip_tcp[0]
                 if server_ip == first:
                     raise Exception("No public STUN server is avaliable. Please check your Internet connection.")
             else:
                 source_addr, mapped_addr = ret
                 return source_addr, mapped_addr
 
-    def get_udp_mapping(self, source_port):
-        server_ip = first = self.stun_ip_udp[0]
+    def get_udp_mapping(self, source_port, custom_sock = None):
+        server_ip = first = self._stun_ip_udp[0]
         while True:
-            ret = self.udp_test(server_ip, source_port)
+            ret = self.udp_test(server_ip, source_port, custom_sock = custom_sock)
             if ret is None:
-                # server unavailable, put it at the end of the list
-                self.stun_ip_udp.append(self.stun_ip_udp.pop(0))
-                server_ip = self.stun_ip_udp[0]
+                # Server unavailable, put it at the end of the list.
+                self._stun_ip_udp.append(self._stun_ip_udp.pop(0))
+                server_ip = self._stun_ip_udp[0]
                 if server_ip == first:
                     raise Exception("No public STUN server is avaliable. Please check your Internet connection.")
             else:
@@ -308,9 +341,9 @@ class StunClient(object):
         ret_test2 = None
         ret_test3 = None
         if source_port == 0:
-            source_port = self.get_free_port(udp=True)
+            source_port = get_free_port(udp=True)
 
-        for server_ip in self.stun_ip_udp:
+        for server_ip in self._stun_ip_udp:
             ret = self.udp_test(server_ip, source_port, change_ip=False, change_port=False)
             if ret is None:
                 self.logger.debug("No response. Trying another STUN server...")
@@ -352,10 +385,10 @@ class StunClient(object):
     def is_tcp_cone(self, source_port = 0):
         # Detect NAT behavior for TCP. Requires at least three STUN servers for accuracy.
         if source_port == 0:
-            source_port = self.get_free_port()
+            source_port = get_free_port()
         mapped_addr_first = None
         count = 0
-        for server_ip in self.stun_ip_tcp:
+        for server_ip in self._stun_ip_tcp:
             if count >= 3:
                 return True
             ret = self.tcp_test(server_ip, source_port)
@@ -372,21 +405,23 @@ class HttpTestServer(object):
     # HTTP Server for testing purpose
     # On success, you can see the text "It works!".
 
-    def __init__(self, listen_addr):
+    def __init__(self, listen_addr, logger = None):
+        self.logger = logger if logger else Logger()
         self.running = False
         self.listen_addr = listen_addr
         self.sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if 'SO_REUSEPORT' in dir(socket):
+        if "SO_REUSEPORT" in dir(socket):
             self.sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
 
     def run(self):
         self.running = True
         self.sock.bind(self.listen_addr)
-        self.sock.listen(1)
+        self.sock.listen(5)
         while self.running:
             try:
                 conn, addr = self.sock.accept()
+                self.logger.debug("HttpTestServer got client %s" % (addr,))
             except Exception:
                 return
             try:
@@ -402,182 +437,532 @@ class HttpTestServer(object):
                 conn.close()
 
     def start(self):
+        self.logger.info("HttpTestServer starting...")
         threading.Thread(target=self.run).start()
 
     def stop(self):
+        self.logger.info("HttpTestServer stopping...")
         self.running = False
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(0.1)
-        result = sock.connect_ex(self.listen_addr)
+        sock.connect_ex(self.listen_addr)
         sock.close()
         self.sock.close()
 
 
-class Natter(object):
-    def __init__(self, source_ip, source_port, test_http = False,
-                 keep_alive_host = "www.qq.com", keep_alive_interval = 10, retry_sec = 3, log_level = Logger.INFO):
-        self.logger = Logger(log_level)
-        self.source_ip = source_ip
-        self.source_port = source_port
-        self.test_http = test_http
-        self.keep_alive_host = keep_alive_host
-        self.keep_alive_interval = keep_alive_interval
-        self.retry_sec = retry_sec
-        self.stun_client = StunClient(source_ip, log_level = log_level)
-        self.keep_alive_sock = self._init_keep_alive_sock()
-        self.http_test_server = HttpTestServer((source_ip, source_port))
+class TCPForwarder(object):
+    def __init__(self, listen_addr, forward_addr, logger = None):
+        self.listen_sock = None
+        self.listen_addr = listen_addr
+        self.forward_addr = forward_addr
+        self.logger = logger if logger else Logger()
+        self.stopped = False
 
-    def _init_keep_alive_sock(self):
-        s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    def run(self):
+        self.stopped = False
+        self.listen_sock = s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
         s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if 'SO_REUSEPORT' in dir(socket):
+        if "SO_REUSEPORT" in dir(socket):
             s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-        s.bind((self.source_ip, self.source_port))
-        s.connect((self.keep_alive_host, 80))
-        s.settimeout(self.keep_alive_interval)
-        return s
+        s.bind(self.listen_addr)
+        s.settimeout(None)
+        s.listen(5)
+        while not self.stopped:
+            try:
+                client_sock, client_addr = s.accept()
+                self.logger.debug("Got client: %s" % (client_addr,))
+            except Exception as e:
+                self.logger.debug("Cannot accept client: %s: %s" % (e.__class__.__name__, e))
+                continue
+            server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+            server_sock.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+            try:
+                server_sock.settimeout(3)
+                server_sock.connect(self.forward_addr)
+                server_sock.settimeout(None)
+            except Exception as e:
+                self.logger.debug("Cannot connect to forward_addr: %s: %s" % (e.__class__.__name__, e))
+                client_sock.close()
+                server_sock.close()
+            threading.Thread(target=self._forward, args=(client_sock, server_sock)).start()
+            threading.Thread(target=self._forward, args=(server_sock, client_sock)).start()
 
-    def _keep_alive(self):
-        s = self.keep_alive_sock
+    @staticmethod
+    def _forward(s1, s2):
+        data = "..."
         try:
-            s.sendall(b"GET /~ HTTP/1.1\r\n")
-            s.sendall(b"Host: %s\r\n" % self.keep_alive_host.encode())
-            s.sendall(b"Connection: keep-alive\r\n")
-            s.sendall(b"\r\n")
-        except Exception as e:
-            self.logger.debug("%s: %s" % (e.__class__.__name__, e))
-            return False
-        try:
-            while s.recv(4096):
-                self.logger.debug("[%s] Keep-Alive OK!" % time.asctime())
-            self.logger.debug("Server closed connection")
-            return False
-        except socket.timeout:
-            return True
-        except Exception as e:
-            self.logger.debug("%s: %s" % (e.__class__.__name__, e))
-            return False
+            while data:
+                data = s1.recv(1024)
+                if data:
+                    s2.sendall(data)
+                else:
+                    s1.shutdown(socket.SHUT_RD)
+                    s2.shutdown(socket.SHUT_WR)
+        except Exception:
+            s1.close()
+            s2.close()
 
-    def test_port_open(self, dst_addr, timeout = 3):
+    def start(self):
+        threading.Thread(target=self.run).start()
+
+    def stop(self):
+        if self.stopped:
+            return
+        self.stopped = True
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(timeout)
-        result = sock.connect_ex(dst_addr)
+        sock.settimeout(0.1)
+        sock.connect_ex(self.listen_addr)
         sock.close()
-        return result == 0
+        self.listen_sock.close()
+        self.listen_sock = None
 
-    def tcp_punch(self):
-        self.logger.info("Checking NAT Type for UDP...")
-        nat_type = self.stun_client.check_nat_type()
-        if nat_type == StunClient.NAT_OPEN_INTERNET:
-            nat_type_txt = "Open Internet"
-        elif nat_type == StunClient.NAT_SYM_UDP_FIREWALL:
-            nat_type_txt = "Symmetric UDP firewall"
-        elif nat_type == StunClient.NAT_FULL_CONE:
-            nat_type_txt = "Full cone (NAT 1)"
-        elif nat_type == StunClient.NAT_RESTRICTED:
-            nat_type_txt = "Restricted (NAT 2)"
-        elif nat_type == StunClient.NAT_PORT_RESTRICTED:
-            nat_type_txt = "Port restricted (NAT 3)"
-        elif nat_type == StunClient.NAT_SYMMETRIC:
-            nat_type_txt = "Symmetric (NAT 4)"
-        else:
-            nat_type_txt = "Unknown"
-        self.logger.info("NAT Type for UDP: [ %s ]" % nat_type_txt)
-        if nat_type == StunClient.NAT_OPEN_INTERNET:
-            self.logger.warning("It looks like you are not in a NAT network, so there is no need to use this tool.")
-        elif nat_type != StunClient.NAT_FULL_CONE:
-            self.logger.warning("The NAT type of your network is not full cone (NAT 1). TCP hole punching may fail.")
 
-        self.logger.info("Checking NAT Type for TCP...")
-        if self.stun_client.is_tcp_cone():
-            self.logger.info("NAT Type for TCP: [ Cone NAT ]")
-        else:
-            self.logger.info("NAT Type for TCP: [ Symmetric ]")
-            self.logger.error("You cannot perform TCP hole punching in a symmetric NAT network.")
-            return
+class UDPForwarder(object):
+    def __init__(self, listen_sock, listen_addr, forward_addr, logger):
+        self.listen_sock = listen_sock
+        self.listen_addr = listen_addr
+        self.forward_addr = forward_addr
+        self.logger = logger if logger else Logger()
+        self.stopped = False
+        self.client_last = {}
+        self.srv_socks = {}
+        self.udp_timeout = 90
 
-        self.logger.info("Start punching...")
-        self.http_test_server.start()
-        source_addr, mapped_addr = self.stun_client.get_tcp_mapping(self.source_port)
-        if not self.test_port_open(source_addr):
-            self.logger.error("Local address %s is not available. Check your firewall settings." % source_addr)
-            return
-        if self.test_port_open(mapped_addr):
-            self.logger.info(
-                "The TCP hole punching appears to be successful. "
-                "Please test this address from another network: %s" % str(mapped_addr)
-            )
-            print("\n================================\n    %s\n================================\n"% str(mapped_addr))
-            if self.test_http:
-                print("HTTP test server is enabled. Please check [ http://%s:%d/ ]\n" % mapped_addr)
-        else:
-            self.logger.warning(
-                "TCP hole punching seems to fail. Maybe you are behind a firewall. "
-                "However, you may check this address from another network: %s" % str(mapped_addr)
-            )
-        if not self.test_http:
-            self.http_test_server.stop()
-        # Keep alive
-        self.logger.info("TCP keep-alive...")
-        while True:
-            ok = self._keep_alive()
-            if not ok:
-                self.keep_alive_sock.close()
-                time.sleep(self.retry_sec)
-                self.keep_alive_sock = self._init_keep_alive_sock()
-                self._keep_alive()
-                source_addr, mapped_addr = self.stun_client.get_tcp_mapping(self.source_port)
-                self.logger.info("Mapped address: %s" % str(mapped_addr))
-    
-    def close(self):
+    def run(self):
+        self.stopped = False
+        while not self.stopped:
+            try:
+                data, client_addr = self.listen_sock.recvfrom(2048)
+            except socket.timeout:
+                continue
+            self.client_last[client_addr] = time.time()
+            server_sock = self.srv_socks.get(client_addr)
+            if data and server_sock is None:
+                self.logger.debug("Got client: %s" % (client_addr,))
+                self.srv_socks[client_addr] = server_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+                threading.Thread(target=self._udp_forward, args=(client_addr,)).start()
+            if server_sock:
+                server_sock.sendto(data, self.forward_addr)
+
+    def _udp_forward(self, client_addr):
+        server_sock = self.srv_socks[client_addr]
+        server_sock.settimeout(self.udp_timeout)
+        data = "..."
         try:
-            self.keep_alive_sock.shutdown(socket.SHUT_RDWR)
+            while data:
+                time_diff = time.time() - self.client_last[client_addr]
+                if time_diff > self.udp_timeout:
+                    server_sock.sendto("", self.forward_addr)
+                    raise socket.timeout("client timeout")
+                data, server_addr = server_sock.recvfrom(2048)
+                self.listen_sock.sendto(data, client_addr)
         except Exception:
             pass
-        self.keep_alive_sock.close()
-        self.http_test_server.stop()
+        finally:
+            server_sock.close()
+            del self.client_last[client_addr]
+            del self.srv_socks[client_addr]
+
+    def start(self):
+        threading.Thread(target=self.run).start()
+
+    def stop(self):
+        if self.stopped:
+            return
+        self.stopped = True
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.sendto(b"", self.listen_addr)
+        sock.close()
+
+
+class NatterTCP(object):
+    def __init__(self, source_addr, forward_addr, keep_alive_host, logger = None):
+        self.logger = logger if logger else Logger()
+        self.stun_client = StunClient(source_addr[0], logger = self.logger)
+        self.forwarder = TCPForwarder(source_addr, forward_addr, logger = self.logger)
+        self.source_addr = source_addr
+        self.forward_addr = forward_addr
+        self.keep_alive_host = keep_alive_host
+        self.keep_alive_sock = None
+        self.forward_running = False
+
+    def keep_alive(self, timeout = 1):
+        # Note:
+        #   The only purpose of this method is to keep the outgoing TCP connection from being closed.
+        #   Natter will send a HEAD HTTP request with keep-alive header to the target host.
+        #   We don't want to disturb the host too much, and meanwhile we will get minimal return data this way.
+        s = self.keep_alive_sock
+        try:
+            if s is None:
+                self.keep_alive_sock = s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                s.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
+                s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+                if "SO_REUSEPORT" in dir(socket):
+                    s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+                s.bind(self.source_addr)
+                s.settimeout(timeout)
+                s.connect((self.keep_alive_host, 80))
+            s.sendall(b"HEAD / HTTP/1.1\r\n")
+            s.sendall(b"Host: %s\r\n" % self.keep_alive_host.encode())
+            s.sendall(b"User-Agent: Mozilla/5.0 (%s; %s) Natter\r\n" % (sys.platform.encode(), os.name.encode()))
+            s.sendall(b"Accept: */*\r\n")
+            s.sendall(b"Connection: keep-alive\r\n")
+            s.sendall(b"\r\n")
+            received = b""
+            conn_closed = False
+            while b"\r\n\r\n" not in received and not conn_closed:
+                received = received[-4:] + s.recv(4096)
+                conn_closed = (len(received) == 0)
+            if not conn_closed:
+                self.logger.debug("[%s] Keep-Alive OK!" % time.asctime())
+                return True
+            else:
+                raise socket.error("Server closed connection")
+        except Exception as e:
+            self.logger.debug("Cannot TCP keep-alive: %s: %s" % (e.__class__.__name__, e))
+            if self.keep_alive_sock is None:
+                return False
+            try:
+                # Explicitly shut down the socket
+                self.keep_alive_sock.shutdown(socket.SHUT_RDWR)
+            except Exception:
+                pass
+            self.keep_alive_sock.close()
+            # Set self.keep_alive_sock to None so the keep-alive connection will be re-established the
+            # next time keep_alive() is called.
+            self.keep_alive_sock = None
+            return False
+
+    def get_mapping(self):
+        try:
+            return self.stun_client.get_tcp_mapping(self.source_addr[1])
+        except Exception as e:
+            self.logger.debug("Cannot get TCP mapping: %s: %s" % (e.__class__.__name__, e))
+            return None
+
+    def start_forward(self):
+        if not self.forward_running:
+            self.forwarder.start()
+            self.forward_running = True
+
+    def stop_forward(self):
+        if self.forward_running:
+            self.forwarder.stop()
+            self.forward_running = False
+
+
+class NatterUDP(object):
+    def __init__(self, source_addr, forward_addr, keep_alive_host, logger = None):
+        self.base_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.base_sock.bind(source_addr)
+        self.logger = logger if logger else Logger()
+        self.stun_client = StunClient(source_addr[0], logger = self.logger)
+        self.forwarder = UDPForwarder(self.base_sock, source_addr, forward_addr, logger = self.logger)
+        self.source_addr = source_addr
+        self.forward_addr = forward_addr
+        self.keep_alive_host = keep_alive_host
+        self.forward_running = False
+
+    def keep_alive(self):
+        # Note:
+        #   Natter will send a message to port 30003 of the target's UDP, regardless of
+        #   whether the target replies to it.
+        try:
+            self.base_sock.sendto(b"hello", (self.keep_alive_host, 30003))
+            self.logger.debug("[%s] Keep-Alive OK!" % time.asctime())
+            return True
+        except Exception as e:
+            self.logger.debug("Cannot UDP keep-alive: %s: %s" % (e.__class__.__name__, e))
+            return False
+
+    def get_mapping(self):
+        fwd = self.forward_running
+        if fwd:
+            # Temporarily stop port forwarding to avoid interference.
+            self.stop_forward()
+        try:
+            return self.stun_client.get_udp_mapping(self.source_addr[1], custom_sock = self.base_sock)
+        except Exception as e:
+            self.logger.debug("Cannot get UDP mapping: %s: %s" % (e.__class__.__name__, e))
+            return None
+        finally:
+            if fwd:
+                self.start_forward()
+
+    def start_forward(self):
+        if not self.forward_running:
+            self.forwarder.start()
+            self.forward_running = True
+
+    def stop_forward(self):
+        if self.forward_running:
+            self.forwarder.stop()
+            self.forward_running = False
+
+
+class Natter(object):
+    def __init__(self, keep_alive_host, interval = 10, logger = None):
+        self.logger = logger if logger else Logger()
+        self.nr_list = []
+        self.keep_alive_host = keep_alive_host
+        self.interval = interval
+        self.hook_command = None
+        self.status_file = None
+        self.maps = {"tcp": {}, "udp": {}}
+
+    def __del__(self):
+        self.close()
+
+    def add_tcp_open_port(self, source_addr):
+        self.nr_list.append(NatterTCP(source_addr, None, self.keep_alive_host, logger = self.logger))
+
+    def add_udp_open_port(self, source_addr):
+        self.nr_list.append(NatterUDP(source_addr, None, self.keep_alive_host, logger = self.logger))
+
+    def add_tcp_forward_port(self, forward_addr):
+        source_addr = ("0.0.0.0", get_free_port())
+        self.nr_list.append(NatterTCP(source_addr, forward_addr, self.keep_alive_host, logger = self.logger))
+
+    def add_udp_forward_port(self, forward_addr):
+        source_addr = ("0.0.0.0", get_free_port(udp=True))
+        self.nr_list.append(NatterUDP(source_addr, forward_addr, self.keep_alive_host, logger = self.logger))
+
+    def set_hook(self, hook_command):
+        self.hook_command = hook_command
+
+    def set_status_file(self, status_file_path):
+        self.status_file = open(status_file_path, "w+")
+
+    def execute_hook(self, inner_addr, outer_addr, protocol, command):
+        inner_ip, inner_port = inner_addr
+        outer_ip, outer_port = outer_addr
+        command = command.replace("{inner_ip}", str(inner_ip))
+        command = command.replace("{inner_port}", str(inner_port))
+        command = command.replace("{outer_ip}", str(outer_ip))
+        command = command.replace("{outer_port}", str(outer_port))
+        command = command.replace("{protocol}", str(protocol))
+        os.system(command)
+
+    def update_status_file(self):
+        status = {"tcp": [], "udp": []}
+        for protocol in status:
+            for inner_ip, inner_port in self.maps[protocol]:
+                outer_ip, outer_port = self.maps[protocol][inner_ip, inner_port]
+                record = {
+                    "inner": "%s:%d" % (inner_ip, inner_port),
+                    "outer": "%s:%d" % (outer_ip, outer_port),
+                }
+                status[protocol].append(record)
+        self.status_file.seek(0)
+        self.status_file.truncate(0)
+        json.dump(status, self.status_file, indent = 4)
+        self.status_file.flush()
+
+    def _update_status(self, nr):
+        mapping = nr.get_mapping()
+        if not mapping:
+            return
+        # update mapping dict
+        protocol = "tcp" if type(nr) is NatterTCP else "udp"
+        inner_addr, outer_addr = mapping
+        if nr.forward_addr:
+            inner_addr = nr.forward_addr
+        self.maps[protocol][inner_addr] = outer_addr
+        self.logger.info(">>> [%s] %s -> %s <<<" % (protocol.upper(), inner_addr, outer_addr))
+        # update status file
+        if self.status_file:
+            self.update_status_file()
+        # excute hook command
+        if self.hook_command:
+            threading.Thread(
+                target = self.execute_hook,
+                args = (inner_addr, outer_addr, protocol, self.hook_command)
+            ).start()
+
+    def run(self):
+        last_ok = {}
+        for nr in self.nr_list:
+            last_ok[nr] = False
+            nr.keep_alive()
+            if nr.forward_addr:
+                nr.start_forward()
+        while True:
+            for nr in self.nr_list:
+                if not last_ok[nr]:
+                    self._update_status(nr)
+                last_ok[nr] = nr.keep_alive()
+            time.sleep(self.interval)
+            self.logger.debug("Current threads: %s" % threading.active_count())
+
+    @staticmethod
+    def from_config(config_path):
+        fo = open(config_path)
+        config = json.load(fo)
+        fo.close()
+
+        log_level = {
+            "debug": Logger.DEBUG,
+            "info": Logger.INFO,
+            "warning": Logger.WARNING,
+            "error": Logger.ERROR
+        }[config["logging"]["level"]]
+        log_file = config["logging"]["log_file"]
+        if log_file:
+            logger = Logger(log_level, files=(sys.stderr, open(log_file, "a")))
+        else:
+            logger = Logger(log_level)
+
+        StunClient.stun_server_tcp = config["stun_server"]["tcp"]
+        StunClient.stun_server_udp = config["stun_server"]["udp"]
+
+        keep_alive_host = config["keep_alive"]
+
+        natter = Natter(keep_alive_host, interval=10, logger=logger)
+        hook = config["status_report"]["hook"]
+        if hook:
+            natter.set_hook(hook)
+        statfile = config["status_report"]["status_file"]
+        if statfile:
+            natter.set_status_file(statfile)
+
+        for addr_str in config["open_port"]["tcp"]:
+            ip, port_str = addr_str.split(":")
+            port = int(port_str)
+            natter.add_tcp_open_port((ip, port))
+
+        for addr_str in config["open_port"]["udp"]:
+            ip, port_str = addr_str.split(":")
+            port = int(port_str)
+            natter.add_udp_open_port((ip, port))
+
+        for addr_str in config["forward_port"]["tcp"]:
+            ip, port_str = addr_str.split(":")
+            port = int(port_str)
+            natter.add_tcp_forward_port((ip, port))
+
+        for addr_str in config["forward_port"]["udp"]:
+            ip, port_str = addr_str.split(":")
+            port = int(port_str)
+            natter.add_udp_forward_port((ip, port))
+
+        return natter
+    
+    def close(self):
+        for nr in self.nr_list:
+            nr.stop_forward()
+        if self.status_file:
+            self.status_file.close()
+
+def print_nat(source_ip = "0.0.0.0", source_port = 0):
+    logger = Logger()
+    stun_client = StunClient(source_ip, logger = logger)
+    nat_type = stun_client.check_nat_type(source_port)
+    if nat_type == StunClient.NAT_OPEN_INTERNET:
+        nat_type_txt = "Open Internet"
+    elif nat_type == StunClient.NAT_SYM_UDP_FIREWALL:
+        nat_type_txt = "Symmetric UDP firewall"
+    elif nat_type == StunClient.NAT_FULL_CONE:
+        nat_type_txt = "Full cone (NAT 1)"
+    elif nat_type == StunClient.NAT_RESTRICTED:
+        nat_type_txt = "Restricted (NAT 2)"
+    elif nat_type == StunClient.NAT_PORT_RESTRICTED:
+        nat_type_txt = "Port restricted (NAT 3)"
+    elif nat_type == StunClient.NAT_SYMMETRIC:
+        nat_type_txt = "Symmetric (NAT 4)"
+    else:
+        nat_type_txt = "Unknown"
+    logger.info("NAT Type for UDP: [ %s ]" % nat_type_txt)
+    if nat_type == StunClient.NAT_OPEN_INTERNET:
+        logger.warning("It looks like you are not in a NAT network, so there is no need to use this tool.")
+    elif nat_type != StunClient.NAT_FULL_CONE:
+        logger.warning("The NAT type of your network is not full cone (NAT 1). TCP hole punching may fail.")
+
+    logger.info("Checking NAT Type for TCP...")
+    if stun_client.is_tcp_cone():
+        logger.info("NAT Type for TCP: [ Cone NAT ]")
+    else:
+        logger.info("NAT Type for TCP: [ Symmetric ]")
+        logger.warning("You cannot perform TCP hole punching in a symmetric NAT network.")
+        return
 
 
 def main():
     try:
+        config_path = ""
         src_host = "0.0.0.0"
         src_port = -1
         verbose = False
         test_http = False
+        use_config = False
+        check_nat = False
         l = []
         for arg in sys.argv[1:]:
             if arg[0] == "-":
-                if arg == "-v":
+                if arg == "-c":
+                    use_config = True
+                elif arg == "-v":
                     verbose = True
                 elif arg == "-t":
                     test_http = True
+                elif arg == "--check-nat":
+                    check_nat = True
                 else:
                     raise ValueError
             else:
                 l.append(arg)
-        if len(l) == 1:
-            src_port = int(l[0])
-        elif len(l) == 2:
-            src_host = l[0]
-            src_port = int(l[1])
+        if not use_config:
+            if len(l) == 0 and check_nat:
+                src_port = 0
+            elif len(l) == 1:
+                src_port = int(l[0])
+            elif len(l) == 2:
+                src_host = l[0]
+                src_port = int(l[1])
+            else:
+                raise ValueError
         else:
-            raise ValueError
+            if len(l) == 1:
+                config_path = l[0]
+                if not os.path.exists(config_path):
+                    print("Config file not found.")
+                    raise ValueError
+            else:
+                raise ValueError
     except ValueError:
-        print("Usage: python natter.py [-v] [-t] [SRC_HOST] SRC_PORT\n")
+        print(
+            "Usage: \n"
+            "    python natter.py [-v] [-t] [SRC_IP] SRC_PORT\n"
+            "    python natter.py --check-nat [SRC_IP] SRC_PORT\n"
+            "    python natter.py --check-nat\n"
+            "    python natter.py -c config_file\n"
+        )
         return
     
-    if verbose:
-        log_level=Logger.DEBUG
+    if check_nat:
+        print_nat(src_host, src_port)
+        return
+    
+    http_test_server = None
+    if not use_config:
+        # TCP single port punching
+        log_level = Logger.DEBUG if verbose else Logger.INFO
+        natter = Natter("www.qq.com", interval=10, logger=Logger(log_level))
+        natter.add_tcp_open_port((src_host, src_port))
+        if test_http:
+            http_test_server = HttpTestServer((src_host, src_port), logger=natter.logger)
+            http_test_server.start()
     else:
-        log_level=Logger.INFO
-    natter = Natter(src_host, src_port, test_http=test_http, log_level=log_level)
-    try:
-        natter.tcp_punch()
-    except KeyboardInterrupt:
-        print("\nExiting...\n")
-        natter.close()
+        natter = Natter.from_config(config_path)
 
+    try:
+        natter.run()
+    except KeyboardInterrupt:
+        if http_test_server:
+            http_test_server.stop()
+        natter.logger.info("Exiting...")
+        natter.close()
+        os._exit(0)
 
 if __name__ == '__main__':
     main()
