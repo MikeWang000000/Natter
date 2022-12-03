@@ -416,7 +416,8 @@ class HttpTestServer(object):
 
 class Natter(object):
     def __init__(self, source_ip, source_port, test_http = False,
-                 keep_alive_host = "www.qq.com", keep_alive_interval = 10, retry_sec = 3, log_level = Logger.INFO):
+                 keep_alive_host = "www.qq.com", keep_alive_interval = 10, retry_sec = 3, log_level = Logger.INFO,
+                 result_file_path=""):
         self.logger = Logger(log_level)
         self.source_ip = source_ip
         self.source_port = source_port
@@ -427,6 +428,7 @@ class Natter(object):
         self.stun_client = StunClient(source_ip, log_level = log_level)
         self.keep_alive_sock = self._init_keep_alive_sock()
         self.http_test_server = HttpTestServer((source_ip, source_port))
+        self.result_file_path = result_file_path
 
     def _init_keep_alive_sock(self):
         s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
@@ -501,6 +503,11 @@ class Natter(object):
         self.logger.info("Start punching...")
         self.http_test_server.start()
         source_addr, mapped_addr = self.stun_client.get_tcp_mapping(self.source_port)
+        if self.result_file_path:
+            self.result_file_path = os.path.realpath(self.result_file_path)
+            with open(self.result_file_path, 'w') as f:
+                self.logger.info(f"the mapping is written to {self.result_file_path}")
+                f.write("%s %d" % mapped_addr)
         if not self.test_port_open(source_addr):
             self.logger.error("Local address %s is not available. Check your firewall settings." % source_addr)
             return
@@ -552,12 +559,15 @@ def main():
                         help='the website to access for keepalive')
     parser.add_argument('-keepalive-interval', dest='keep_alive_interval', metavar='10', type=int, default=10,
                         help='the keepalive interval')
+    parser.add_argument('-o', '-output', dest='output', metavar='mapper.txt', default="",
+                        help='the file path for output the hole mapping result, the format is TYPE IP PORT')
     args = parser.parse_args()
     natter = Natter(args.src_host, args.SRC_PORT,
                     test_http=args.test_http,
                     log_level=Logger.DEBUG if args.verbose else Logger.INFO,
                     keep_alive_host=args.keep_alive_host,
-                    keep_alive_interval=args.keep_alive_interval)
+                    keep_alive_interval=args.keep_alive_interval,
+                    result_file_path=args.output)
     try:
         natter.tcp_punch()
     except KeyboardInterrupt:
