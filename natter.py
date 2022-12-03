@@ -1,3 +1,4 @@
+import argparse
 import threading
 import socket
 import struct
@@ -540,38 +541,23 @@ class Natter(object):
 
 
 def main():
-    try:
-        src_host = "0.0.0.0"
-        src_port = -1
-        verbose = False
-        test_http = False
-        l = []
-        for arg in sys.argv[1:]:
-            if arg[0] == "-":
-                if arg == "-v":
-                    verbose = True
-                elif arg == "-t":
-                    test_http = True
-                else:
-                    raise ValueError
-            else:
-                l.append(arg)
-        if len(l) == 1:
-            src_port = int(l[0])
-        elif len(l) == 2:
-            src_host = l[0]
-            src_port = int(l[1])
-        else:
-            raise ValueError
-    except ValueError:
-        print("Usage: python natter.py [-v] [-t] [SRC_HOST] SRC_PORT\n")
-        return
-    
-    if verbose:
-        log_level=Logger.DEBUG
-    else:
-        log_level=Logger.INFO
-    natter = Natter(src_host, src_port, test_http=test_http, log_level=log_level)
+    parser = argparse.ArgumentParser()
+    parser.add_argument('-v', dest='verbose', default=False, action='store_true', help='show the debug message')
+    parser.add_argument('-t', dest='test_http', default=False, action='store_true',
+                        help='run the http test server on SRC_PORT')
+    parser.add_argument('-host', dest='src_host', metavar="0.0.0.0", default="0.0.0.0",
+                        help='the local listening host')
+    parser.add_argument('SRC_PORT', type=int, help='the local port you want to cross!')
+    parser.add_argument('-keepalive-host', dest='keep_alive_host', metavar='www.qq.com', default='www.qq.com',
+                        help='the website to access for keepalive')
+    parser.add_argument('-keepalive-interval', dest='keep_alive_interval', metavar='10', type=int, default=10,
+                        help='the keepalive interval')
+    args = parser.parse_args()
+    natter = Natter(args.src_host, args.SRC_PORT,
+                    test_http=args.test_http,
+                    log_level=Logger.DEBUG if args.verbose else Logger.INFO,
+                    keep_alive_host=args.keep_alive_host,
+                    keep_alive_interval=args.keep_alive_interval)
     try:
         natter.tcp_punch()
     except KeyboardInterrupt:
