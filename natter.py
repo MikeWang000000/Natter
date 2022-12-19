@@ -768,17 +768,18 @@ class Natter(object):
         inner_addr, outer_addr = mapping
         if nr.forward_addr:
             inner_addr = nr.forward_addr
-        self.maps[protocol][inner_addr] = outer_addr
-        self.logger.info(">>> [%s] %s -> %s <<<" % (protocol.upper(), inner_addr, outer_addr))
-        # update status file
-        if self.status_file:
-            self.update_status_file()
-        # excute hook command
-        if self.hook_command:
-            threading.Thread(
-                target = self.execute_hook,
-                args = (inner_addr, outer_addr, protocol, self.hook_command)
-            ).start()
+        if inner_addr not in self.maps[protocol] or self.maps[protocol][inner_addr] != outer_addr:
+            self.maps[protocol][inner_addr] = outer_addr
+            self.logger.info(">>> [%s] %s -> %s <<<" % (protocol.upper(), inner_addr, outer_addr))
+            # update status file
+            if self.status_file:
+                self.update_status_file()
+            # excute hook command
+            if self.hook_command:
+                threading.Thread(
+                    target = self.execute_hook,
+                    args = (inner_addr, outer_addr, protocol, self.hook_command)
+                ).start()
 
     def run(self):
         last_ok = {}
