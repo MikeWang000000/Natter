@@ -78,6 +78,11 @@ class Logger(object):
                 fo.write("[ERROR] - " + str(msg) + "\n")
                 fo.flush()
 
+    def script(self, msg):
+        if self.level <= Logger.INFO:
+            for fo in self.files:
+                fo.write(msg)
+                fo.flush()
 
 class StunClient(object):
     # Note: IPv4 Only.
@@ -742,7 +747,8 @@ class Natter(object):
         command = command.replace("{outer_ip}", str(outer_ip))
         command = command.replace("{outer_port}", str(outer_port))
         command = command.replace("{protocol}", str(protocol))
-        os.system(command)
+        script_log = os.popen(command)
+        self.logger.script(script_log.read())
 
     def update_status_file(self):
         status = {"tcp": [], "udp": []}
