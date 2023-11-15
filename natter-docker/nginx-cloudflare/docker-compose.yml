@@ -1,0 +1,26 @@
+version: "3"
+services:
+  natter-nginx-cf:
+    command: -m iptables -e /opt/cf-redir.py -p 18888
+    volumes:
+      - ./cf-redir.py:/opt/cf-redir.py
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter
+    restart: always
+    depends_on:
+      - nginx
+
+  nginx:
+    volumes:
+      - ./html:/usr/share/nginx/html
+    ports:
+      - "18888:80"
+    environment:
+      - TZ=Asia/Shanghai
+    image: nginx
+    restart: always

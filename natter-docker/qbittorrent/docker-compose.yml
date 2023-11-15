@@ -1,0 +1,29 @@
+version: "3"
+services:
+  natter-qb:
+    command: -m iptables -e /opt/qb.sh -r
+    volumes:
+      - ./qb.sh:/opt/qb.sh
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter
+    restart: always
+    depends_on:
+      - qbittorrent
+
+  qbittorrent:
+    volumes:
+      - ./config:/config
+      - ./downloads:/downloads
+    environment:
+      - TZ=Asia/Shanghai
+      - WEBUI_PORT=18080
+      - PUID=1000
+      - PGID=1000
+    network_mode: host
+    image: linuxserver/qbittorrent
+    restart: always

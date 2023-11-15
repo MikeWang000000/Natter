@@ -1,0 +1,20 @@
+FROM openwrt/rootfs:x86-64 as builder
+
+COPY natter.py /opt/natter.py
+
+RUN mkdir -p /var/lock/ /var/run/ \
+    && opkg update \
+    && opkg install ca-certificates curl gzip iptables-legacy jq nftables python3 socat wget \
+    && opkg remove 'kmod-*' --force-depends \
+    && curl -L 'https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-amd64-2.11.5.gz' | gunzip > /usr/bin/gost \
+    && chmod a+x /usr/bin/gost \
+    && chmod a+x /opt/natter.py
+
+
+ENV HOME        /opt
+ENV PATH        /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV LANG        C.UTF-8
+ENV LANGUAGE    C.UTF-8
+ENV LC_ALL      C.UTF-8
+
+ENTRYPOINT ["/opt/natter.py"]

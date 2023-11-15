@@ -1,0 +1,19 @@
+FROM amd64/debian
+
+COPY natter.py /opt/natter.py
+
+RUN apt-get update \
+    && apt-get install -y --no-install-recommends ca-certificates curl gzip iptables jq nftables python3 socat wget \
+    && update-alternatives --set iptables /usr/sbin/iptables-legacy \
+    && curl -L 'https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-amd64-2.11.5.gz' | gunzip > /usr/bin/gost \
+    && chmod a+x /usr/bin/gost \
+    && chmod a+x /opt/natter.py
+
+
+ENV HOME        /opt
+ENV PATH        /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV LANG        C.UTF-8
+ENV LANGUAGE    C.UTF-8
+ENV LC_ALL      C.UTF-8
+
+ENTRYPOINT ["/opt/natter.py"]

@@ -1,17 +1,17 @@
-# Natter (v2)
+# Natter
 
-Expose your port behind full-cone NAT to the Internet.
-  
-[中文文档](docs/README.md)
+将 fullcone NAT (NAT 1) 后的端口，打洞暴露至互联网。
+
+*注意：Natter 2.0 重写了整个程序，并不兼容先前版本的命令行用法。详见 [更新说明](upgrade.md) 。*
 
 
-## Quick start
+## 快速开始
 
 ```bash
 python3 natter.py
 ```
 
-Or, using Docker:
+或者, 使用 Docker:
 
 ```bash
 docker run --net=host nattertool/natter
@@ -33,9 +33,9 @@ docker run --net=host nattertool/natter
 2023-11-01 01:00:13 [I]
 ```
 
-In the example above, `203.0.113.10` is your public IP address outside the full-cone NAT. Natter opened TCP port `203.0.113.10:14500` for testing.
+上述例子中, `203.0.113.10` 是您 NAT 1 外部的公网 IP 地址。Natter 打开了 TCP 端口 `203.0.113.10:14500` 以供测试。
 
-Visit `http://203.0.113.10:14500` outside your LAN, you will see the web page:
+在局域网外访问 `http://203.0.113.10:14500` ，您可以看到如下网页:
 
 ```
 It works!
@@ -45,7 +45,11 @@ Natter
 ```
 
 
-## Usage
+## 使用方法
+
+- 详见 [参数说明](usage.md) 。
+- 有关转发方法，详见 [转发方法](forward.md) 。
+- 有关通知脚本，详见 [Natter 通知脚本](script.md) 。
 
 ```
 usage: natter.py [--version] [--help] [-v] [-q] [-u] [-k <interval>]
@@ -78,32 +82,32 @@ forward options:
 ```
 
 
-## Usage for Docker
+## Docker 使用方法
 
-Read [natter-docker](natter-docker) for details.
+详见 [natter-docker](../natter-docker) 。
 
 
-## Use cases
+## 使用例
 
-Expose local port 80 to the Internet, using built-in forward method:
+使用内置转发，对外开放本机 80 端口：
 
 ```bash
 python3 natter.py -p 80
 ```
 
-Expose local port 80 to the Internet, using iptables kernel forward method (requires root permission):
+使用 iptables 内核转发（需要 root 权限），对外开放本机 80 端口：
 
 ```bash
 sudo python3 natter.py -m iptables -p 80
 ```
 
 
-## Dependencies
+## 依赖
 
-- Python 2.7 (minimum), >= 3.6 (recommended)
-- No third-party modules are required.
+- Python 2.7 (最低), >= 3.6 (推荐)
+- 不需要安装第三方模块。
 
 
-## License
+## 许可证
 
 GNU General Public License v3.0

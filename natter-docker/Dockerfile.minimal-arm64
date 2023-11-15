@@ -1,0 +1,27 @@
+FROM openwrt/rootfs:aarch64_generic as builder
+
+COPY natter.py /opt/natter.py
+
+RUN mkdir -p /var/lock/ \
+    && opkg update \
+    && opkg install python3-light \
+    && mkdir -p /image/lib/ /image/usr/lib/ /image/usr/bin/ /image/opt/ \
+    && cp -a /lib/ld-musl-*.so.1 /lib/libc.so /lib/libgcc_s.so.1 /image/lib/ \
+    && cp -a /usr/lib/libpython* /usr/lib/python* /image/usr/lib/ \
+    && cp -a /usr/bin/python* /image/usr/bin/ \
+    && opkg install python3 \
+    && python3 -m compileall -b -o 2 /opt/natter.py \
+    && cp -a /opt/natter.pyc /image/opt/
+
+
+FROM scratch
+
+COPY --from=builder /image/ /
+
+ENV HOME        /opt
+ENV PATH        /usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin
+ENV LANG        C.UTF-8
+ENV LANGUAGE    C.UTF-8
+ENV LC_ALL      C.UTF-8
+
+ENTRYPOINT ["/usr/bin/python3", "/opt/natter.pyc"]

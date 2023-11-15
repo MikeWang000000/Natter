@@ -1,0 +1,129 @@
+version: "3"
+services:
+  natter-debian-amd64:
+    command: -m test
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter:dev-debian-amd64
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: natter-docker/Dockerfile.debian-amd64
+      platforms:
+        - linux/amd64
+
+  natter-debian-arm64:
+    command: -m test
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter:dev-debian-arm64
+    platform: linux/arm64
+    build:
+      context: ..
+      dockerfile: natter-docker/Dockerfile.debian-arm64
+      platforms:
+        - linux/arm64
+
+  natter-alpine-amd64:
+    command: -m test
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter:dev-alpine-amd64
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: natter-docker/Dockerfile.alpine-amd64
+      platforms:
+        - linux/amd64
+
+  natter-alpine-arm64:
+    command: -m test
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter:dev-alpine-arm64
+    platform: linux/arm64
+    build:
+      context: ..
+      dockerfile: natter-docker/Dockerfile.alpine-arm64
+      platforms:
+        - linux/arm64
+
+  natter-openwrt-amd64:
+    command: -m test
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter:dev-openwrt-amd64
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: natter-docker/Dockerfile.openwrt-amd64
+      platforms:
+        - linux/amd64
+
+  natter-openwrt-arm64:
+    command: -m test
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter:dev-openwrt-arm64
+    platform: linux/arm64
+    build:
+      context: ..
+      dockerfile: natter-docker/Dockerfile.openwrt-arm64
+      platforms:
+        - linux/arm64
+
+  natter-minimal-amd64:
+    command: -m test
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter:dev-minimal-amd64
+    platform: linux/amd64
+    build:
+      context: ..
+      dockerfile: natter-docker/Dockerfile.minimal-amd64
+      platforms:
+        - linux/amd64
+
+  natter-minimal-arm64:
+    command: -m test
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter:dev-minimal-arm64
+    platform: linux/arm64
+    build:
+      context: ..
+      dockerfile: natter-docker/Dockerfile.minimal-arm64
+      platforms:
+        - linux/arm64

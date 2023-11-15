@@ -1,0 +1,30 @@
+version: "3"
+services:
+  natter-mc:
+    command: -m iptables -e /opt/cf-srv.py -p 25565 -r
+    volumes:
+      - ./cf-srv.py:/opt/cf-srv.py
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter
+    restart: always
+    depends_on:
+      - minecraft-server
+
+  minecraft-server:
+    volumes:
+      - ./data:/data
+    environment:
+      - TZ=Asia/Shanghai
+      - VERSION=1.20.2
+      - EULA=TRUE
+    ports:
+      - "25565:25565"
+    stdin_open: true
+    tty: true
+    image: itzg/minecraft-server
+    restart: always

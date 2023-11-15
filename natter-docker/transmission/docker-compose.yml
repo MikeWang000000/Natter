@@ -1,0 +1,32 @@
+version: "3"
+services:
+  natter-tr:
+    command: -m iptables -e /opt/tr.sh -r
+    volumes:
+      - ./tr.sh:/opt/tr.sh
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter
+    restart: always
+    depends_on:
+      - transmission
+
+  transmission:
+    volumes:
+      - ./config:/config
+      - ./downloads:/downloads
+      - ./watch:/watch
+    environment:
+      - TZ=Asia/Shanghai
+      - USER=admin
+      - PASS=adminadmin
+      - WHITELIST=*.*.*.*
+      - PUID=1000
+      - PGID=1000
+    network_mode: host
+    image: linuxserver/transmission
+    restart: always
