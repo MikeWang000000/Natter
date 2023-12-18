@@ -1047,10 +1047,20 @@ def check_docker_network():
     fo = open("/sys/class/net/eth0/address", "r")
     macaddr = fo.read().strip()
     fo.close()
-    ipaddr = socket.gethostbyname(socket.getfqdn())
+    fqdn = socket.getfqdn()
+    ipaddr = socket.gethostbyname(fqdn)
     docker_macaddr = "02:42:" + ":".join(["%02x" % int(x) for x in ipaddr.split(".")])
     if macaddr == docker_macaddr:
         raise RuntimeError("Docker's `--net=host` option is required.")
+
+    if not os.path.isfile("/proc/sys/kernel/osrelease"):
+        return
+    fo = open("/proc/sys/kernel/osrelease", "r")
+    uname_r = fo.read().strip()
+    fo.close()
+    uname_r_sfx = uname_r.rsplit("-").pop()
+    if uname_r_sfx.lower() in ["linuxkit", "wsl2"] and fqdn.lower() == "docker-desktop":
+        raise RuntimeError("Network from Docker Desktop is not supported.")
 
 
 def addr_to_str(addr):
