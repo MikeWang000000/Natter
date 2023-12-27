@@ -5,6 +5,8 @@ import codecs
 import time
 import sys
 import os
+import json
+
 
 
 # Fix OpenWRT Python codecs issues:
@@ -520,15 +522,29 @@ class Natter(object):
             self.http_test_server.stop()
         # Keep alive
         self.logger.info("TCP keep-alive...")
+        
+      
+          
+          
+       
         while True:
+            time.sleep(1)
+           
+             # 将映射的IP和端口信息写入Cache.json文件
+            
+            with open('Cache.json', 'w') as cache_file:
+              json.dump({'mapped_external_ip': mapped_addr[0], 'mapped_external_port': mapped_addr[1]}, cache_file)
+
             ok = self._keep_alive()
             if not ok:
+                
                 self.keep_alive_sock.close()
                 time.sleep(self.retry_sec)
                 self.keep_alive_sock = self._init_keep_alive_sock()
                 self._keep_alive()
                 source_addr, mapped_addr = self.stun_client.get_tcp_mapping(self.source_port)
                 self.logger.info("Mapped address: %s" % str(mapped_addr))
+              
     
     def close(self):
         try:

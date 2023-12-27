@@ -1,0 +1,56 @@
+
+//该脚本有涉及到腾讯云公共请求模块tencentcloud.common，该模块可以通过pip命令安装
+
+//文档地址 ：   https://cloud.tencent.com/document/sdk/Python?from_column=20421&from=20421
+
+//使用python的pip进行安装
+
+//   安装命令如下：          pip install --upgrade tencentcloud-sdk-python
+
+
+
+
+
+
+
+//不要问我为什么不直接在源文件中备注，问就是json标准格式不允许备注，运行会直接报错
+
+
+{     //腾讯云 API 密钥                
+    "tencent_api": {        
+        "secret_id": "999999999",             //腾讯云 API SecretId
+        "secret_key": "99999999",        //腾讯云 API SecretKey
+        "endpoint": "dnspod.tencentcloudapi.com"        //腾讯云 DDNS 目标服务器，默认就行，不用改
+    },      //api创建地址   https://console.dnspod.cn/account/token/apikey
+
+   
+
+    "script0": {    
+        "Domain": "tencent.com"              //你需要ddns的域名,由于每个api可以管理多个域名，所以这里填你自己的域名
+    },
+
+
+    "script1": {
+        "ip_check_url": "https://myip4.ipip.net/",      //获取ip的api网址    这里是ipv4的，需要ipv6请自行修改
+        "ip_pattern": "\\d+\\.\\d+\\.\\d+\\.\\d+",     //正则表达，用于确定IP在它返回文件中的位置，不同api返回值所在位置也有所不同，需要根据情况自行修改
+        "domain": "tencent.com",                         //你需要ddns的域名,由于每个api可以管理多个域名，所以这里填你自己的域名
+        "record_id": 99999999,                     //你需要修改的ddns目标所处的  ID
+        "SubDomain": "@",                           //主机记录，如 www，如果不修改，默认为 @。（代表所有链接都指向你解析的IP）
+        "RecordType": "A",                         //记录类型，A代表ipv4。而AAAA则代表ipv6。根据需要自行修改，一般默认即可。
+        "RecordLine": "默认",                     //记录线路，通过 API 记录线路获得。没有特殊需求的话，甭管。
+        "sleep": 30                             //ddns检测更新的等待间隔
+    },
+
+
+    "script2": {
+            "domain": "tencent.com",                   //你需要ddns的域名,由于每个api可以管理多个域名，所以这里填你自己的域名
+            "record_id": 99999999,                //你需要修改的ddns目标所处的  ID
+            "SubDomain": "_minecraft._tcp",        //主机记录，minecraft代表服务名，tcp是协议
+            "RecordType": "SRV",                  //记录类型，SRV类型，为了让域名实现不输入端口号就能直接访问服务器（NAt穿透，端口号是随机的）
+            "RecordLine": "默认",                //记录线路，通过 API 记录线路获得。没有特殊需求的话，甭管。
+            "priority": "0 5",                 //域名解析优先级，如果你不知道它是干什么的，那么默认0 5即可（要有空格）
+            "sleep": 30                       //ddns检测更新的等待间隔
+            }                                //获取动态端口号的那部分在脚本里，因为在json里我实现不了
+}
+    
+    

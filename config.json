@@ -1,0 +1,40 @@
+{                   
+    "tencent_api": {        
+        "secret_id": "9999999999",            
+        "secret_key": "9999999999",       
+        "endpoint": "dnspod.tencentcloudapi.com"        
+    },     
+
+   
+
+    "script0": {    
+        "Domain": "tencent.com",              
+    },
+
+
+
+
+    "script1": {
+        "ip_check_url": "https://myip4.ipip.net/",      
+        "ip_pattern": "\\d+\\.\\d+\\.\\d+\\.\\d+",     
+        "domain": "tencent.com",                        
+        "record_id": 99999999,                    
+        "SubDomain": "@",                          
+        "RecordType": "A",                       
+        "RecordLine": "默认",
+        "sleep": 30                    
+    },
+
+
+    "script2": {
+            "domain": "tencent.com",                  
+            "record_id": 9999999,                
+            "SubDomain": "_minecraft._tcp",       
+            "RecordType": "SRV",                  
+            "RecordLine": "默认",              
+            "priority": "0 5",
+            "sleep": 30
+        }                                       
+}
+    
+    
