@@ -12,7 +12,7 @@ from tencentcloud.dnspod.v20210323 import dnspod_client, models
 
 
 # 设置日志级别为 INFO，修改 format 和 datefmt 参数
-logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H:%M')
+logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(message)s', datefmt='%Y-%m-%d %H')
 
 # 读取整个配置文件
 with open('config.json', 'r', encoding='utf-8') as config_file:
@@ -103,13 +103,16 @@ try:
                 resp = client.ModifyRecord(req)
 
                 # 打印更新成功消息和当前端口号
-                logging.info(f"您的域名 {config_dynamic_port['domain']} 更新成功, 当前端口号 {PORT}")
+                log_message = f"您的域名 {config_dynamic_port['domain']} 更新成功, 当前端口号 {PORT}"
+                logging.info(log_message)
+
 
             except TencentCloudSDKException as err:
                 logging.error(f"Tencent Cloud SDK 异常：{err}")
 
         else:
-            logging.info("端口号没有变化，无需更新")
+                log_message = "当前 PORT 与之前保存的 PORT 相同，无需更新"
+                logging.info(log_message)
 
         # 获取当前公网 IP
         current_ip = get_current_ip()
@@ -126,7 +129,7 @@ try:
             ddns_ip = resp.RecordInfo.Value
 
             if current_ip != ddns_ip:
-                logging.info("执行更新 DDNS 记录操作")
+
 
                 # 修改 DDNS 记录
                 update_req = models.ModifyRecordRequest()
@@ -140,18 +143,22 @@ try:
                 }
                 update_req.from_json_string(json.dumps(update_params))
                 update_resp = client.ModifyRecord(update_req)
-                logging.info(f"您的域名 {config_static_ip['domain']} DDNS 已更新。新IP: {current_ip}")
+                log_message = f"您的域名 {config_static_ip['domain']} DDNS 已更新。新IP: {current_ip}"
+                logging.info(log_message)
 
                 ddns_ip = current_ip  
             else:
                 # 不要问为什么有两个输出，问就是不知道怎么写，只会if嵌套。如果你知道怎么写，那么可以改掉。
-                logging.info(f"当前公网 IP 与之前保存的 DDNS IP 相同，无需更新")
+                    log_message = "当前公网 IP 与之前保存的 IP 相同，无需更新"
+                    logging.info(log_message)
         else:
-            logging.info(f"当前公网 IP 与之前保存的 DDNS IP 相同，无需更新")
+                    log_message = "当前公网 IP 与之前保存的 IP 相同，无需更新"
+                    logging.info(log_message)
 
         # 等待一段时间之后继续检查
         time.sleep(config_static_ip["sleep"])
 
 
 except Exception as e:
-    logging.exception(f"发生严重错误：{e}")
+        log_error = f"发生严重错误：{e}"
+        logging.exception(log_error)
