@@ -41,19 +41,17 @@ def read_dynamic_port():
 
 
 
-# 获取公网 IP 地址
-# 这里使用的是api中返回的ip地址，你也可以不用api。直接从Cache.json里的mapped_external_ip中获取
+# 读取缓存文件中的动态IP信息
+
 
 def get_current_ip():
     try:
-        resp = requests.get(config_static_ip["ip_check_url"]).content  
-        resp = resp.decode('utf8')
-        match_obj = re.search(config_static_ip["ip_pattern"], resp)  
-        return match_obj.group() if match_obj else None  
-    except Exception as e:
-        error_msg = str(e)
-        logging.error(f"获取当前 IP 地址时发生错误：{error_msg}")
-        return None
+        with open("Cache.json", "r", encoding="utf-8") as cache_file:
+            cache_data = json.load(cache_file)
+            current_ip = cache_data.get("mapped_external_ip", None)
+    except (FileNotFoundError, json.JSONDecodeError, KeyError):
+        current_ip = None
+    return current_ip
  
 
 
