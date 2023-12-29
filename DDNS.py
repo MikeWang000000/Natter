@@ -1,7 +1,5 @@
 # 导入所需的模块
 import json  # 导入处理 JSON 数据的模块
-import requests  # 导入用于发送HTTP请求的模块
-import re  # 导入正则表达式模块
 import logging  # 导入日志记录模块
 import time  # 导入时间模块
 from tencentcloud.common import credential  
@@ -70,26 +68,26 @@ client = dnspod_client.DnspodClient(cred, "", client_profile)
 
 
 # 初始化动态端口变量
-last_dynamic_port = None
+last_PORT = None
 
 # 初始化 IP 变量
-ddns_ip = None
+last_IP = None
 
 
 
 try:
     while True:
-        # 获取动态端口
-        dynamic_port = read_dynamic_port()
+            # 获取动态端口
+        PORT = read_dynamic_port()
 
-        if dynamic_port != last_dynamic_port:
-            # 如果获取到动态端口则使用该值，否则使用默认端口号 14382
-            PORT = dynamic_port or 14382
+        if PORT != last_PORT:    #对比
 
-            last_dynamic_port = dynamic_port
+
+
+            last_PORT = PORT     #有变化就写进去
 
             try:
-                # 构造修改 DDNS 记录请求
+                        # 修改 DDNS 记录
                 req = models.ModifyRecordRequest()
                 params = {
                     "Domain": config_dynamic_port["domain"],
@@ -108,27 +106,20 @@ try:
 
 
             except TencentCloudSDKException as err:
-                logging.error(f"Tencent Cloud SDK 异常：{err}")
+                log_error = f"Tencent Cloud SDK 异常：{err}"
+                logging.error(log_error)
 
         else:
                 log_message = "当前 PORT 与之前保存的 PORT 相同，无需更新"
                 logging.info(log_message)
 
         # 获取当前公网 IP
-        current_ip = get_current_ip()
+        IP = get_current_ip()
 
-        if current_ip != ddns_ip:
-            # 获取当前 DDNS 记录值
-            req = models.DescribeRecordRequest()
-            params = {
-                "Domain": config_static_ip["domain"],
-                "RecordId": config_static_ip["record_id"]
-            }
-            req.from_json_string(json.dumps(params))
-            resp = client.DescribeRecord(req)
-            ddns_ip = resp.RecordInfo.Value
+        if IP != last_IP:
 
-            if current_ip != ddns_ip:
+   
+                last_IP = IP
 
 
                 # 修改 DDNS 记录
@@ -139,18 +130,14 @@ try:
                     "RecordType": config_static_ip["RecordType"],
                     "RecordId": config_static_ip["record_id"],
                     "RecordLine": config_static_ip["RecordLine"],
-                    "Value": current_ip
+                    "Value": IP
                 }
                 update_req.from_json_string(json.dumps(update_params))
                 update_resp = client.ModifyRecord(update_req)
-                log_message = f"您的域名 {config_static_ip['domain']} DDNS 已更新。新IP: {current_ip}"
+                log_message = f"您的域名 {config_static_ip['domain']} DDNS 已更新。新IP: {IP}"
                 logging.info(log_message)
 
-                ddns_ip = current_ip  
-            else:
-                # 不要问为什么有两个输出，问就是不知道怎么写，只会if嵌套。如果你知道怎么写，那么可以改掉。
-                    log_message = "当前公网 IP 与之前保存的 IP 相同，无需更新"
-                    logging.info(log_message)
+            
         else:
                     log_message = "当前公网 IP 与之前保存的 IP 相同，无需更新"
                     logging.info(log_message)
