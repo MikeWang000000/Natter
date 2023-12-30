@@ -32,6 +32,11 @@ docker compose logs -f
 docker compose down
 ```
 
+Web 后台地址（请将 127.0.0.1 替换为当前主机 IP 地址）：
+```
+http://127.0.0.1:18080/
+```
+
 
 ## 修改参数
 
