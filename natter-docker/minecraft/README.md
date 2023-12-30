@@ -48,6 +48,10 @@ docker compose down
 
 ## 修改参数
 
+### 使用特定的 Minecraft 版本号
+
+启动容器前，请在 `docker-compose.yml` 中，请修改 `minecraft-server:` 下的 `environment:` 部分，将 `VERSION` 值设置为您想要的版本。
+
 ### 修改 Minecraft 服务的端口号
 
 本示例使用 `25565` 端口。
