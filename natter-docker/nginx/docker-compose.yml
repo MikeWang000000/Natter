@@ -1,10 +1,7 @@
 version: "3"
 services:
   natter-nginx:
-    command: -m iptables -p 18888
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
+    command: -p 18888
     environment:
       - TZ=Asia/Shanghai
     network_mode: host

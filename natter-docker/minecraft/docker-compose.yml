@@ -1,12 +1,9 @@
 version: "3"
 services:
   natter-mc:
-    command: -m iptables -e /opt/cf-srv.py -p 25565 -r
+    command: -e /opt/cf-srv.py -p 25565 -r
     volumes:
       - ./cf-srv.py:/opt/cf-srv.py
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
     environment:
       - TZ=Asia/Shanghai
     network_mode: host

@@ -1,12 +1,9 @@
 version: "3"
 services:
   natter-nginx-cf:
-    command: -m iptables -e /opt/cf-redir.py -p 18888
+    command: -e /opt/cf-redir.py -p 18888
     volumes:
       - ./cf-redir.py:/opt/cf-redir.py
-    cap_add:
-      - NET_ADMIN
-      - NET_RAW
     environment:
       - TZ=Asia/Shanghai
     network_mode: host
