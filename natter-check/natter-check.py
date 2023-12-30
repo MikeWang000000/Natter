@@ -24,7 +24,7 @@ import time
 import socket
 import struct
 
-__version__ = "2.0-dev"
+__version__ = "2.0.0-rc1"
 
 
 def new_socket_reuse(family, type):
