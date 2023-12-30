@@ -24,6 +24,8 @@ services:
       - WEBUI_PORT=18080
       - PUID=1000
       - PGID=1000
+      - LANG=zh_CN.UTF-8
+      - LC_ALL=zh_CN.UTF-8
     network_mode: host
     image: linuxserver/qbittorrent
     restart: always
