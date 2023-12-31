@@ -15,7 +15,7 @@ docker run --rm --net=host nattertool/check
 两项指标均显示 OK ，表示您当前使用的网络可以正常使用 Natter。
 
 ```
-> NatterCheck v2.0.0-rc1
+> NatterCheck
 
 Checking TCP NAT...                  [   OK   ] ... NAT Type: 1
 Checking UDP NAT...                  [   OK   ] ... NAT Type: 1

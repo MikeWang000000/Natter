@@ -18,7 +18,7 @@ docker run --net=host nattertool/natter
 ```
 
 ```
-2023-11-01 01:00:08 [I] Natter v2.0.0-rc1
+2023-11-01 01:00:08 [I] Natter
 2023-11-01 01:00:08 [I] Tips: Use `--help` to see help messages
 2023-11-01 01:00:12 [I]
 2023-11-01 01:00:12 [I] tcp://192.168.1.100:13483 <--Natter--> tcp://203.0.113.10:14500
