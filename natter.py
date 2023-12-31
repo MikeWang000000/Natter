@@ -1441,7 +1441,7 @@ def main():
         except NatterRetryException:
             pass
         except (NatterExitException, KeyboardInterrupt):
-            exit()
+            sys.exit()
         show_title = False
 
 
