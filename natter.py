@@ -390,9 +390,12 @@ class ForwardTestServer(object):
         self.sock.bind(('', port))
         Logger.debug("fwd-test: Starting test server at %s" % addr_to_uri((ip, port), udp=udp))
         if udp:
-            start_daemon_thread(self._test_server_run_udp)
+            th = start_daemon_thread(self._test_server_run_udp)
         else:
-            start_daemon_thread(self._test_server_run_http)
+            th = start_daemon_thread(self._test_server_run_http)
+        time.sleep(1)
+        if not th.is_alive():
+            raise OSError("Test server thread exited too quickly")
         self.active = True
 
     def _test_server_run_http(self):
@@ -895,9 +898,12 @@ class ForwardSocket(object):
             addr_to_uri((ip, port), udp=udp), addr_to_uri((toip, toport), udp=udp)
         ))
         if udp:
-            start_daemon_thread(self._socket_udp_recvfrom)
+            th = start_daemon_thread(self._socket_udp_recvfrom)
         else:
-            start_daemon_thread(self._socket_tcp_listen)
+            th = start_daemon_thread(self._socket_tcp_listen)
+        time.sleep(1)
+        if not th.is_alive():
+            raise OSError("Socket thread exited too quickly")
         self.active = True
 
     def _socket_tcp_listen(self):
@@ -1011,6 +1017,7 @@ def start_daemon_thread(target, args=()):
     th = threading.Thread(target=target, args=args)
     th.daemon = True
     th.start()
+    return th
 
 
 def closed_socket_ex(ex):
