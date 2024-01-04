@@ -283,12 +283,13 @@ class StunClient(object):
 
 
 class KeepAlive(object):
-    def __init__(self, host, port, source_host, source_port, udp=False):
+    def __init__(self, host, port, source_host, source_port, interface=None, udp=False):
         self.sock = None
         self.host = host
         self.port = port
         self.source_host = source_host
         self.source_port = source_port
+        self.interface = interface
         self.udp = udp
         self.reconn = False
 
@@ -299,6 +300,13 @@ class KeepAlive(object):
     def _connect(self):
         sock_type = socket.SOCK_DGRAM if self.udp else socket.SOCK_STREAM
         sock = new_socket_reuse(socket.AF_INET, sock_type)
+        if self.interface is not None:
+            if hasattr(socket, "SO_BINDTODEVICE"):
+                sock.setsockopt(
+                    socket.SOL_SOCKET, socket.SO_BINDTODEVICE, self.interface.encode() + b"\0"
+                )
+            else:
+                Logger.warning("keep-alive: Ignoring unsupported SO_BINDTODEVICE.")
         sock.bind((self.source_host, self.source_port))
         sock.settimeout(3)
         sock.connect((self.host, self.port))
@@ -1319,7 +1327,7 @@ def natter_main(show_title = True):
     # set actual ip and port for keep-alive socket to bind, instead of zero
     bind_ip, bind_port = natter_addr
 
-    keep_alive = KeepAlive(keepalive_host, keepalive_port, bind_ip, bind_port, udp=udp_mode)
+    keep_alive = KeepAlive(keepalive_host, keepalive_port, bind_ip, bind_port, udp=udp_mode, interface=bind_interface)
     keep_alive.keep_alive()
 
     # get the mapped address again after the keep-alive connection is established
