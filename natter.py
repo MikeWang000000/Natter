@@ -114,14 +114,14 @@ class PortTest(object):
         finally:
             sock.close()
 
-    def test_wan(self, addr, source_ip = None, info=False):
+    def test_wan(self, addr, source_ip = None, interface=None, info=False):
         # only port number in addr is used, WAN IP will be ignored
         print_status = Logger.info if info else Logger.debug
-        ret01 = self._test_ifconfigco(addr[1], source_ip)
+        ret01 = self._test_ifconfigco(addr[1], source_ip, interface)
         if ret01 == 1:
             print_status("WAN > %-21s [ OPEN ]" % addr_to_str(addr))
             return 1
-        ret02 = self._test_transmission(addr[1], source_ip)
+        ret02 = self._test_transmission(addr[1], source_ip, interface)
         if ret02 == 1:
             print_status("WAN > %-21s [ OPEN ]" % addr_to_str(addr))
             return 1
@@ -131,11 +131,18 @@ class PortTest(object):
         print_status("WAN > %-21s [ UNKNOWN ]" % addr_to_str(addr))
         return 0
 
-    def _test_ifconfigco(self, port, source_ip = None):
+    def _test_ifconfigco(self, port, source_ip = None, interface=None):
         # repo: https://github.com/mpolden/echoip
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(8)
         try:
+            if interface is not None:
+                if hasattr(socket, "SO_BINDTODEVICE"):
+                    sock.setsockopt(
+                        socket.SOL_SOCKET, socket.SO_BINDTODEVICE, interface.encode() + b"\0"
+                    )
+                else:
+                    Logger.warning("port-test: Ignoring unsupported SO_BINDTODEVICE.")
             if source_ip:
                 sock.bind((source_ip, 0))
             sock.connect(("ifconfig.co", 80))
@@ -163,11 +170,18 @@ class PortTest(object):
         finally:
             sock.close()
 
-    def _test_transmission(self, port, source_ip = None):
+    def _test_transmission(self, port, source_ip = None, interface=None):
         # repo: https://github.com/transmission/portcheck
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
             sock.settimeout(8)
+            if interface is not None:
+                if hasattr(socket, "SO_BINDTODEVICE"):
+                    sock.setsockopt(
+                        socket.SOL_SOCKET, socket.SO_BINDTODEVICE, interface.encode() + b"\0"
+                    )
+                else:
+                    Logger.warning("port-test: Ignoring unsupported SO_BINDTODEVICE.")
             if source_ip:
                 sock.bind((source_ip, 0))
             sock.connect(("portcheck.transmissionbt.com", 80))
@@ -1385,7 +1399,7 @@ def natter_main(show_title = True):
         ret1 = port_test.test_lan(to_addr, info=True)
         ret2 = port_test.test_lan(natter_addr, info=True)
         ret3 = port_test.test_lan(outer_addr, info=True)
-        ret4 = port_test.test_wan(outer_addr, source_ip=natter_addr[0], info=True)
+        ret4 = port_test.test_wan(outer_addr, source_ip=natter_addr[0], interface=bind_interface, info=True)
         if ret1 == -1:
             Logger.warning("!! Target port is closed !!")
         elif ret1 == 1 and ret3 == ret4 == -1:
