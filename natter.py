@@ -96,11 +96,20 @@ class NatterExit(object):
 
 
 class PortTest(object):
-    def test_lan(self, addr, info=False):
+    def test_lan(self, addr, source_ip = None, interface=None, info=False):
         print_status = Logger.info if info else Logger.debug
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         sock.settimeout(1)
         try:
+            if interface is not None:
+                if hasattr(socket, "SO_BINDTODEVICE"):
+                    sock.setsockopt(
+                        socket.SOL_SOCKET, socket.SO_BINDTODEVICE, interface.encode() + b"\0"
+                    )
+                else:
+                    Logger.warning("port-test: Ignoring unsupported SO_BINDTODEVICE.")
+            if source_ip:
+                sock.bind((source_ip, 0))
             if sock.connect_ex(addr) == 0:
                 print_status("LAN > %-21s [ OPEN ]" % addr_to_str(addr))
                 return 1
@@ -1398,7 +1407,7 @@ def natter_main(show_title = True):
     if not udp_mode:
         ret1 = port_test.test_lan(to_addr, info=True)
         ret2 = port_test.test_lan(natter_addr, info=True)
-        ret3 = port_test.test_lan(outer_addr, info=True)
+        ret3 = port_test.test_lan(outer_addr, source_ip=natter_addr[0], interface=bind_interface, info=True)
         ret4 = port_test.test_wan(outer_addr, source_ip=natter_addr[0], interface=bind_interface, info=True)
         if ret1 == -1:
             Logger.warning("!! Target port is closed !!")
@@ -1427,7 +1436,7 @@ def natter_main(show_title = True):
             Logger.debug("Start recheck")
             need_recheck = False
             # check LAN port first
-            if udp_mode or port_test.test_lan(outer_addr) == -1:
+            if udp_mode or port_test.test_lan(outer_addr, source_ip=natter_addr[0], interface=bind_interface) == -1:
                 # then check through STUN
                 _, outer_addr_curr = stun.get_mapping()
                 if outer_addr_curr != outer_addr:
