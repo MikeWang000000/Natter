@@ -955,7 +955,7 @@ class ForwardSocket(object):
                 if not s:
                     s = outbound_socks[addr] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                     s.settimeout(self.udp_timeout)
-                    s.connect((self.outbound_addr))
+                    s.connect(self.outbound_addr)
                     if threading.active_count() >= self.max_threads:
                         raise OSError("Too many threads")
                     start_daemon_thread(self._socket_udp_send, args=(self.sock, s, addr))
@@ -998,8 +998,8 @@ class NatterRetryException(Exception):
     pass
 
 
-def new_socket_reuse(family, type):
-    sock = socket.socket(family, type)
+def new_socket_reuse(family, socket_type):
+    sock = socket.socket(family, socket_type)
     if hasattr(socket, "SO_REUSEADDR"):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if hasattr(socket, "SO_REUSEPORT"):
