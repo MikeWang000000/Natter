@@ -250,7 +250,7 @@ class StunClient(object):
                 ))
                 self.stun_server_list.append(self.stun_server_list.pop(0))
                 if self.stun_server_list[0] == first:
-                    Logger.error("stun: No STUN server is avaliable right now")
+                    Logger.error("stun: No STUN server is available right now")
                     # force sleep for 10 seconds, then try the next loop
                     time.sleep(10)
 
@@ -992,7 +992,7 @@ class ForwardSocket(object):
                 if not s:
                     s = outbound_socks[addr] = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
                     s.settimeout(self.udp_timeout)
-                    s.connect((self.outbound_addr))
+                    s.connect(self.outbound_addr)
                     if threading.active_count() >= self.max_threads:
                         raise OSError("Too many threads")
                     start_daemon_thread(self._socket_udp_send, args=(self.sock, s, addr))
@@ -1035,8 +1035,8 @@ class NatterRetryException(Exception):
     pass
 
 
-def new_socket_reuse(family, type):
-    sock = socket.socket(family, type)
+def new_socket_reuse(family, socket_type):
+    sock = socket.socket(family, socket_type)
     if hasattr(socket, "SO_REUSEADDR"):
         sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     if hasattr(socket, "SO_REUSEPORT"):
@@ -1376,7 +1376,7 @@ def natter_main(show_title = True):
     forwarder.start_forward(natter_addr[0], natter_addr[1], to_addr[0], to_addr[1], udp=udp_mode)
     NatterExit.set_atexit(forwarder.stop_forward)
 
-    # Display route infomation
+    # Display route information
     Logger.info()
     route_str = ""
     if ForwardImpl not in (ForwardNone, ForwardTestServer):
