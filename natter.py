@@ -227,7 +227,7 @@ class StunClient(object):
                 ))
                 self.stun_server_list.append(self.stun_server_list.pop(0))
                 if self.stun_server_list[0] == first:
-                    Logger.error("stun: No STUN server is avaliable right now")
+                    Logger.error("stun: No STUN server is available right now")
                     # force sleep for 10 seconds, then try the next loop
                     time.sleep(10)
 
@@ -1338,7 +1338,7 @@ def natter_main(show_title = True):
     forwarder.start_forward(natter_addr[0], natter_addr[1], to_addr[0], to_addr[1], udp=udp_mode)
     NatterExit.set_atexit(forwarder.stop_forward)
 
-    # Display route infomation
+    # Display route information
     Logger.info()
     route_str = ""
     if ForwardImpl not in (ForwardNone, ForwardTestServer):
