@@ -393,6 +393,9 @@ class KeepAlive(object):
         except socket.timeout as ex:
             if not buff:
                 raise ex
+            # temp fix: Keep-alive cause STUN socket timeout on Windows
+            if sys.platform == "win32":
+                self.reset()
             return
 
 
