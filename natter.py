@@ -443,16 +443,18 @@ class ForwardTestServer(object):
             try:
                 conn.settimeout(self.timeout)
                 conn.recv(self.buff_size)
-                content = b"<html><body><h1>It works!</h1><hr/>Natter</body></html>"
-                conn.sendall(
-                    b"HTTP/1.1 200 OK\r\n"
-                    b"Content-Type: text/html\r\n"
-                    b"Content-Length: %d\r\n"
-                    b"Connection: close\r\n"
-                    b"Server: Natter\r\n"
-                    b"\r\n"
-                    b"%s\r\n" % (len(content), content)
-                )
+                content = "<html><body><h1>It works!</h1><hr/>Natter</body></html>"
+                content_len = len(content.encode())
+                data = (
+                    "HTTP/1.1 200 OK\r\n"
+                    "Content-Type: text/html\r\n"
+                    "Content-Length: %d\r\n"
+                    "Connection: close\r\n"
+                    "Server: Natter\r\n"
+                    "\r\n"
+                    "%s\r\n" % (content_len, content)
+                ).encode()
+                conn.sendall(data)
                 conn.shutdown(socket.SHUT_RDWR)
             except (OSError, socket.error):
                 pass
