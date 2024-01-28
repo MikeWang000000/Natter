@@ -238,7 +238,7 @@ class StunTest(object):
                     continue
                 source_addr  = sock.getsockname()
                 mapped_addr  = self._extract_mapped_addr(payload)
-                ip_changed   = (recv_host != self.STUN_PORT)
+                ip_changed   = (recv_host != stun_host)
                 port_changed = (recv_port != self.STUN_PORT)
                 return source_addr, mapped_addr, ip_changed, port_changed
         except Exception:
