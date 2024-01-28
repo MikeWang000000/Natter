@@ -820,7 +820,7 @@ class ForwardGost(object):
             ).decode()
         except (OSError, subprocess.CalledProcessError) as e:
             return False
-        m = re.search(r"gost ([0-9]+)\.([0-9]+)", output)
+        m = re.search(r"gost v?([0-9]+)\.([0-9]+)", output)
         if m:
             current_ver = tuple(int(v) for v in m.groups())
             Logger.debug("fwd-gost: Found gost %s" % str(current_ver))
