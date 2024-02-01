@@ -171,7 +171,7 @@ class PortTest(object):
                 response += buff
             Logger.debug("port-test: ifconfig.co: %s" % response)
             _, content = response.split(b"\r\n\r\n", 1)
-            dat = json.loads(content)
+            dat = json.loads(content.decode())
             return 1 if dat["reachable"] else -1
         except (OSError, LookupError, ValueError, TypeError, socket.error) as ex:
             Logger.debug("Cannot test port %d from ifconfig.co because: %s" % (port, ex))
