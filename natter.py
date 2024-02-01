@@ -35,7 +35,7 @@ import argparse
 import threading
 import subprocess
 
-__version__ = "2.0.0-rc2"
+__version__ = "2.0.0-dev"
 
 
 class Logger(object):
