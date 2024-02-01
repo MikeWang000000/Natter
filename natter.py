@@ -1059,9 +1059,15 @@ def start_daemon_thread(target, args=()):
 def closed_socket_ex(ex):
     if not hasattr(ex, "errno"):
         return False
-    if hasattr(errno, "ECONNABORTED") and ex.errno != errno.ECONNABORTED:
+    if hasattr(errno, "ECONNABORTED") and ex.errno == errno.ECONNABORTED:
         return True
-    if hasattr(errno, "EBADFD") and ex.errno != errno.EBADFD:
+    if hasattr(errno, "EBADFD") and ex.errno == errno.EBADFD:
+        return True
+    if hasattr(errno, "EBADF") and ex.errno == errno.EBADF:
+        return True
+    if hasattr(errno, "WSAEBADF") and ex.errno == errno.WSAEBADF:
+        return True
+    if hasattr(errno, "WSAEINTR") and ex.errno == errno.WSAEINTR:
         return True
     return False
 
