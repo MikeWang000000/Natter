@@ -60,6 +60,8 @@ options:
   -v              verbose mode, printing debug messages
   -q              exit when mapped address is changed
   -u              UDP mode
+  -f              Add port forwarding through UPNP device.
+                  which maybe improve the mapping success rate under NAT Type 2/3 networks
   -k <interval>   seconds between each keep-alive
   -s <address>    hostname or address to STUN server
   -h <address>    hostname or address to keep-alive server
@@ -97,12 +99,17 @@ Expose local port 80 to the Internet, using iptables kernel forward method (requ
 sudo python3 natter.py -m iptables -p 80
 ```
 
+If you need port mapping via UPnP
+```bash
+python3 natter.py -p 80 -f
+```
+
 
 ## Dependencies
 
 - Python 2.7 (minimum), >= 3.6 (recommended)
 - No third-party modules are required.
-
+- If you need UPnP port mapping function, you need to install upnpcclient. `pip install upnpclient`
 
 ## License
 

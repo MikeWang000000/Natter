@@ -34,6 +34,7 @@ import struct
 import argparse
 import threading
 import subprocess
+import upnpclient
 
 __version__ = "2.0.0-rc2"
 
@@ -1168,6 +1169,44 @@ def ip_normalize(ipaddr):
     return socket.inet_ntoa(socket.inet_aton(ipaddr))
 
 
+def add_upnp_portforward(to_ip, to_port, bind_ip, bind_port, udp):
+    proto = "UDP" if udp else "TCP"
+
+    Logger.info("Discovering UPnP devices...")
+    devices = upnpclient.discover()
+    if not devices:
+        Logger.error("Cannot find any UPnP devices.")
+        return False
+
+    for device in devices:
+        if 'WANIPConn1' not in device.service_map:
+            Logger.info(f"Device {device.friendly_name} does not support WANIPConn1 service for port forwarding.")
+            continue
+
+        Logger.info(f"Discovered UPnP Device: {device.friendly_name} ({device.model_name})")
+        try:
+            nat_status = device.WANIPConn1.GetNATRSIPStatus()
+            if nat_status.get("NewNATEnabled"):
+                device.WANIPConn1.AddPortMapping(
+                    NewRemoteHost='',
+                    NewExternalPort=bind_port,
+                    NewProtocol=proto,
+                    NewInternalPort=to_port,
+                    NewInternalClient=to_ip,
+                    NewEnabled='1',
+                    NewPortMappingDescription='Natter',
+                    NewLeaseDuration=0)  # Set to 0 for perpetual lease or adjust as needed
+                Logger.info("Added UPnP port forward successfully.")
+                return True
+            else:
+                Logger.error(f"Router {device.model_name} does not support UPnP NAT Port Forwarding. Please check your router settings.")
+        except Exception as e:
+            Logger.error(f"Error adding UPnP port forward on device {device.model_name}: {e}")
+
+    Logger.error("Failed to add port forward rules.")
+    return False
+
+
 def natter_main(show_title = True):
     argp = argparse.ArgumentParser(
         description="Expose your port behind full-cone NAT to the Internet.", add_help=False
@@ -1189,6 +1228,9 @@ def natter_main(show_title = True):
     group.add_argument(
         "-u", action="store_true", help="UDP mode"
     )
+    group.add_argument(
+        "-f", action="store_true", help="Add port forwarding through UPNP device, \
+                which maybe improve the mapping success rate under NAT Type 2/3 networks")
     group.add_argument(
         "-k", type=int, metavar="<interval>", default=15,
         help="seconds between each keep-alive"
@@ -1235,6 +1277,7 @@ def natter_main(show_title = True):
     args = argp.parse_args()
     verbose = args.v
     udp_mode = args.u
+    upnp_forward = args.f
     interval = args.k
     stun_list = args.s
     keepalive_srv = args.h
@@ -1247,6 +1290,7 @@ def natter_main(show_title = True):
     to_port = args.p
     keep_retry = args.r
     exit_when_changed = args.q
+    
 
     sys.tracebacklimit = 0
     if verbose:
@@ -1390,6 +1434,8 @@ def natter_main(show_title = True):
     # Display route information
     Logger.info()
     route_str = ""
+    if upnp_forward:
+        add_upnp_portforward(to_ip, to_port, bind_ip, bind_port, udp_mode)
     if ForwardImpl not in (ForwardNone, ForwardTestServer):
         route_str += "%s <--%s--> " % (addr_to_uri(to_addr, udp=udp_mode), method)
     route_str += "%s <--Natter--> %s" % (
