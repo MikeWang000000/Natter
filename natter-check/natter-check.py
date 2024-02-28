@@ -23,10 +23,23 @@ import sys
 import time
 import socket
 import struct
+import codecs
 
 __version__ = "2.0.0-rc2"
 
-
+def fix_codecs(codec_list = ["utf-8", "idna"]):
+    missing_codecs = []
+    for codec_name in codec_list:
+        try:
+            codecs.lookup(codec_name)
+        except LookupError:
+            missing_codecs.append(codec_name.lower())
+    def search_codec(name):
+        if name.lower() in missing_codecs:
+            return codecs.CodecInfo(codecs.ascii_encode, codecs.ascii_decode, name="ascii")
+    if missing_codecs:
+        codecs.register(search_codec)
+        
 def new_socket_reuse(family, type):
     sock = socket.socket(family, type)
     if hasattr(socket, "SO_REUSEADDR"):
@@ -478,6 +491,7 @@ class Check(object):
 
 
 def main():
+    fix_codecs()
     check_docker_network()
     print("> NatterCheck v%s\n" % __version__)
     check = Check()
