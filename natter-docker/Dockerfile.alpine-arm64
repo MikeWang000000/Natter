@@ -3,7 +3,8 @@ FROM --platform=linux/arm64 arm64v8/alpine:3.19
 COPY natter.py /opt/natter.py
 
 RUN apk update \
-    && apk add ca-certificates curl gzip iptables jq nftables python3 socat wget \
+    && apk add ca-certificates curl gzip iptables iptables-legacy jq nftables python3 socat wget \
+    && ln -sf iptables-legacy /sbin/iptables \
     && curl -L 'https://github.com/ginuerzh/gost/releases/download/v2.11.5/gost-linux-armv8-2.11.5.gz' | gunzip > /usr/bin/gost \
     && chmod a+x /usr/bin/gost \
     && chmod a+x /opt/natter.py
