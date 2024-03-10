@@ -1,4 +1,4 @@
-FROM openwrt/rootfs:x86-64 as builder
+FROM --platform=linux/amd64 openwrt/rootfs:x86-64-23.05.2 as builder
 
 COPY natter.py /opt/natter.py
 

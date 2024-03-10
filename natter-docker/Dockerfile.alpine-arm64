@@ -1,4 +1,4 @@
-FROM arm64v8/alpine
+FROM --platform=linux/arm64 arm64v8/alpine:3.19
 
 COPY natter.py /opt/natter.py
 

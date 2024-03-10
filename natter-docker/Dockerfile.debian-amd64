@@ -1,4 +1,4 @@
-FROM amd64/debian
+FROM --platform=linux/amd64 amd64/debian:12
 
 COPY natter.py /opt/natter.py
 

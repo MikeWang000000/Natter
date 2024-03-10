@@ -1,4 +1,4 @@
-FROM arm64v8/debian
+FROM --platform=linux/arm64 arm64v8/debian:12
 
 COPY natter.py /opt/natter.py
 
