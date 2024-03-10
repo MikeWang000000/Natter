@@ -53,7 +53,7 @@ qb_password="adminadmin"
 
 将用户名 `admin` 和密码 `adminadmin` 修改为您设置的新用户名和密码。
 
-### 修改 Transmission 的 Web 端口号
+### 修改 qBittorrent 的 Web 端口号
 
 本示例使用 `18080` 端口。
 

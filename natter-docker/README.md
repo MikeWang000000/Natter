@@ -44,7 +44,7 @@ docker run --net=host nattertool/natter -p 80
 docker run \
     --net=host \
     --cap-add=NET_ADMIN \
-    --cap-add=NET_RAW \ 
+    --cap-add=NET_RAW \
     nattertool/natter -m iptables -p 80
 ```
 
