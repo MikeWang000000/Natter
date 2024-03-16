@@ -464,7 +464,7 @@ class ForwardTestServer(object):
 
 class ForwardIptables(object):
     def __init__(self, snat=False, sudo=False):
-        self.uuid = self._get_uuid4()
+        self.rules = []
         self.active = False
         self.min_ver = (1, 4, 1)
         self.curr_ver = (0, 0, 0)
@@ -543,21 +543,18 @@ class ForwardIptables(object):
 
     def _iptables_clean(self):
         Logger.debug("fwd-iptables: Cleaning up Natter rules")
-        rules = subprocess.check_output(
-            self.iptables_cmd + ["-t", "nat", "--list-rules", "NATTER"]
-        ).decode().splitlines()
-        rules += subprocess.check_output(
-            self.iptables_cmd + ["-t", "nat", "--list-rules", "NATTER_SNAT"]
-        ).decode().splitlines()
-        for rule in rules:
-            m = re.search(r"NATTER_UUID=([0-9a-f\-]+)", rule)
-            if not rule.startswith("-A NATTER") or not m:
-                continue
-            rule_uuid = m.group(1)
-            if rule_uuid == self.uuid:
+        while self.rules:
+            rule = self.rules.pop()
+            rule_rm = ["-D" if arg in ("-I", "-A") else arg for arg in rule]
+            try:
                 subprocess.check_output(
-                    self.iptables_cmd + ["-t", "nat", "-D"] + shlex.split(rule[2:])
+                    self.iptables_cmd + rule_rm,
+                    stderr=subprocess.STDOUT
                 )
+                return
+            except subprocess.CalledProcessError as ex:
+                Logger.error("fwd-iptables: Failed to execute %s: %s" % (ex.cmd, ex.output))
+                continue
 
     def start_forward(self, ip, port, toip, toport, udp=False):
         if ip != toip:
@@ -568,27 +565,29 @@ class ForwardIptables(object):
         Logger.debug("fwd-iptables: Adding rule %s forward to %s" % (
             addr_to_uri((ip, port), udp=udp), addr_to_uri((toip, toport), udp=udp)
         ))
-        subprocess.check_output(self.iptables_cmd + [
+        rule = [
             "-t",       "nat",
             "-I",       "NATTER",
             "-p",       proto,
             "--dst",    ip,
             "--dport",  "%d" % port,
             "-j",       "DNAT",
-            "--to-destination", "%s:%d" % (toip, toport),
-            "-m", "comment", "--comment", "NATTER_UUID=%s" % self.uuid
-        ])
+            "--to-destination", "%s:%d" % (toip, toport)
+        ]
+        subprocess.check_output(self.iptables_cmd + rule)
+        self.rules.append(rule)
         if self.snat:
-            subprocess.check_output(self.iptables_cmd + [
+            rule = [
                 "-t",       "nat",
                 "-I",       "NATTER_SNAT",
                 "-p",       proto,
                 "--dst",    toip,
                 "--dport",  "%d" % toport,
                 "-j",       "SNAT",
-                "--to-source", ip,
-                "-m", "comment", "--comment", "NATTER_UUID=%s" % self.uuid
-            ])
+                "--to-source", ip
+            ]
+            subprocess.check_output(self.iptables_cmd + rule)
+            self.rules.append(rule)
         self.active = True
 
     def stop_forward(self):
@@ -605,22 +604,6 @@ class ForwardIptables(object):
                 raise OSError("IP forwarding is not allowed. Please do `sysctl net.ipv4.ip_forward=1`")
         else:
             Logger.warning("fwd-iptables: '%s' not found" % str(fpath))
-
-    def _get_uuid4(self):
-        fpath = "/proc/sys/kernel/random/uuid"
-        if os.path.exists(fpath):
-            fin = open(fpath, "r")
-            buff = fin.read()
-            fin.close()
-            return buff.strip()
-        else:
-            return "%08x-%04x-%04x-%04x-%04x%08x" % (
-                random.getrandbits(32),
-                random.getrandbits(16),
-                random.getrandbits(12) | 0x4000,
-                random.getrandbits(14) | 0x8000,
-                random.getrandbits(16), random.getrandbits(32)
-            )
 
 
 class ForwardSudoIptables(ForwardIptables):
