@@ -96,20 +96,16 @@ class NatterExit(object):
 
 
 class PortTest(object):
-    def test_lan(self, addr, source_ip = None, interface=None, info=False):
+    def test_lan(self, addr, source_ip=None, interface=None, info=False):
         print_status = Logger.info if info else Logger.debug
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(1)
         try:
-            if interface is not None:
-                if hasattr(socket, "SO_BINDTODEVICE"):
-                    sock.setsockopt(
-                        socket.SOL_SOCKET, socket.SO_BINDTODEVICE, interface.encode() + b"\0"
-                    )
-                else:
-                    Logger.warning("port-test: Ignoring unsupported SO_BINDTODEVICE.")
-            if source_ip:
-                sock.bind((source_ip, 0))
+            socket_set_opt(
+                sock,
+                bind_addr   = (source_ip, 0) if source_ip else None,
+                interface   = interface,
+                timeout     = 1
+            )
             if sock.connect_ex(addr) == 0:
                 print_status("LAN > %-21s [ OPEN ]" % addr_to_str(addr))
                 return 1
@@ -123,7 +119,7 @@ class PortTest(object):
         finally:
             sock.close()
 
-    def test_wan(self, addr, source_ip = None, interface=None, info=False):
+    def test_wan(self, addr, source_ip=None, interface=None, info=False):
         # only port number in addr is used, WAN IP will be ignored
         print_status = Logger.info if info else Logger.debug
         ret01 = self._test_ifconfigco(addr[1], source_ip, interface)
@@ -140,20 +136,16 @@ class PortTest(object):
         print_status("WAN > %-21s [ UNKNOWN ]" % addr_to_str(addr))
         return 0
 
-    def _test_ifconfigco(self, port, source_ip = None, interface=None):
+    def _test_ifconfigco(self, port, source_ip=None, interface=None):
         # repo: https://github.com/mpolden/echoip
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(8)
         try:
-            if interface is not None:
-                if hasattr(socket, "SO_BINDTODEVICE"):
-                    sock.setsockopt(
-                        socket.SOL_SOCKET, socket.SO_BINDTODEVICE, interface.encode() + b"\0"
-                    )
-                else:
-                    Logger.warning("port-test: Ignoring unsupported SO_BINDTODEVICE.")
-            if source_ip:
-                sock.bind((source_ip, 0))
+            socket_set_opt(
+                sock,
+                bind_addr   = (source_ip, 0) if source_ip else None,
+                interface   = interface,
+                timeout     = 8
+            )
             sock.connect(("ifconfig.co", 80))
             sock.sendall((
                 "GET /port/%d HTTP/1.0\r\n"
@@ -179,20 +171,16 @@ class PortTest(object):
         finally:
             sock.close()
 
-    def _test_transmission(self, port, source_ip = None, interface=None):
+    def _test_transmission(self, port, source_ip=None, interface=None):
         # repo: https://github.com/transmission/portcheck
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
         try:
-            sock.settimeout(8)
-            if interface is not None:
-                if hasattr(socket, "SO_BINDTODEVICE"):
-                    sock.setsockopt(
-                        socket.SOL_SOCKET, socket.SO_BINDTODEVICE, interface.encode() + b"\0"
-                    )
-                else:
-                    Logger.warning("port-test: Ignoring unsupported SO_BINDTODEVICE.")
-            if source_ip:
-                sock.bind((source_ip, 0))
+            socket_set_opt(
+                sock,
+                bind_addr   = (source_ip, 0) if source_ip else None,
+                interface   = interface,
+                timeout     = 8
+            )
             sock.connect(("portcheck.transmissionbt.com", 80))
             sock.sendall((
                 "GET /%d HTTP/1.0\r\n"
@@ -258,18 +246,14 @@ class StunClient(object):
         # ref: https://www.rfc-editor.org/rfc/rfc5389
         socket_type = socket.SOCK_DGRAM if self.udp else socket.SOCK_STREAM
         stun_host, stun_port = self.stun_server_list[0]
-        sock = new_socket_reuse(socket.AF_INET, socket_type)
-        sock.settimeout(3)
-        if self.interface is not None:
-            if not hasattr(socket, "SO_BINDTODEVICE"):
-                raise RuntimeError(
-                    "Binding to an interface is not supported by current version of "
-                    "Python or operating system"
-                )
-            sock.setsockopt(
-                socket.SOL_SOCKET, socket.SO_BINDTODEVICE, self.interface.encode() + b"\0"
-            )
-        sock.bind((self.source_host, self.source_port))
+        sock = socket.socket(socket.AF_INET, socket_type)
+        socket_set_opt(
+            sock,
+            reuse       = True,
+            bind_addr   = (self.source_host, self.source_port),
+            interface   = self.interface,
+            timeout     = 3
+        )
         try:
             sock.connect((stun_host, stun_port))
             inner_addr = sock.getsockname()
@@ -322,16 +306,14 @@ class KeepAlive(object):
 
     def _connect(self):
         sock_type = socket.SOCK_DGRAM if self.udp else socket.SOCK_STREAM
-        sock = new_socket_reuse(socket.AF_INET, sock_type)
-        if self.interface is not None:
-            if hasattr(socket, "SO_BINDTODEVICE"):
-                sock.setsockopt(
-                    socket.SOL_SOCKET, socket.SO_BINDTODEVICE, self.interface.encode() + b"\0"
-                )
-            else:
-                Logger.warning("keep-alive: Ignoring unsupported SO_BINDTODEVICE.")
-        sock.bind((self.source_host, self.source_port))
-        sock.settimeout(3)
+        sock = socket.socket(socket.AF_INET, sock_type)
+        socket_set_opt(
+            sock,
+            reuse       = True,
+            bind_addr   = (self.source_host, self.source_port),
+            interface   = self.interface,
+            timeout     = 3
+        )
         sock.connect((self.host, self.port))
         Logger.debug("keep-alive: Connected to host %s" % (
             addr_to_uri((self.host, self.port), udp=self.udp)
@@ -420,8 +402,12 @@ class ForwardTestServer(object):
     # target address is ignored
     def start_forward(self, ip, port, toip, toport, udp=False):
         self.sock_type = socket.SOCK_DGRAM if udp else socket.SOCK_STREAM
-        self.sock = new_socket_reuse(socket.AF_INET, self.sock_type)
-        self.sock.bind(('', port))
+        self.sock = socket.socket(socket.AF_INET, self.sock_type)
+        socket_set_opt(
+            self.sock,
+            reuse       = True,
+            bind_addr   = ("", port)
+        )
         Logger.debug("fwd-test: Starting test server at %s" % addr_to_uri((ip, port), udp=udp))
         if udp:
             th = start_daemon_thread(self._test_server_run_udp)
@@ -466,7 +452,7 @@ class ForwardTestServer(object):
             try:
                 msg, addr = self.sock.recvfrom(self.buff_size)
                 Logger.debug("fwd-test: got client %s" % (addr,))
-                self.sock.sendto(b"It works! - Natter\r\n", addr) 
+                self.sock.sendto(b"It works! - Natter\r\n", addr)
             except (OSError, socket.error):
                 return
 
@@ -927,8 +913,12 @@ class ForwardSocket(object):
         if (ip, port) == (toip, toport):
             raise ValueError("Cannot forward to the same address %s" % addr_to_str((ip, port)))
         self.sock_type = socket.SOCK_DGRAM if udp else socket.SOCK_STREAM
-        self.sock = new_socket_reuse(socket.AF_INET, self.sock_type)
-        self.sock.bind(("", port))
+        self.sock = socket.socket(socket.AF_INET, self.sock_type)
+        socket_set_opt(
+            self.sock,
+            reuse       = True,
+            bind_addr   = ("", port)
+        )
         self.outbound_addr = toip, toport
         Logger.debug("fwd-socket: Starting socket %s forward to %s" % (
             addr_to_uri((ip, port), udp=udp), addr_to_uri((toip, toport), udp=udp)
@@ -1040,12 +1030,23 @@ class NatterRetryException(Exception):
     pass
 
 
-def new_socket_reuse(family, socket_type):
-    sock = socket.socket(family, socket_type)
-    if hasattr(socket, "SO_REUSEADDR"):
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    if hasattr(socket, "SO_REUSEPORT"):
-        sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+def socket_set_opt(sock, reuse=False, bind_addr=None, interface=None, timeout=-1):
+    if reuse:
+        if hasattr(socket, "SO_REUSEADDR"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        if hasattr(socket, "SO_REUSEPORT"):
+            sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    if interface is not None:
+        if hasattr(socket, "SO_BINDTODEVICE"):
+            sock.setsockopt(
+                socket.SOL_SOCKET, socket.SO_BINDTODEVICE, interface.encode() + b"\0"
+            )
+        else:
+            raise RuntimeError("Binding to an interface is not supported on your platform.")
+    if bind_addr is not None:
+        sock.bind(bind_addr)
+    if timeout != -1:
+        sock.settimeout(timeout)
     return sock
 
 
@@ -1178,7 +1179,7 @@ def natter_main(show_title = True):
     )
     group = argp.add_argument_group("options")
     group.add_argument(
-        "--version", '-V', action="version", version="Natter %s" % __version__,
+        "--version", "-V", action="version", version="Natter %s" % __version__,
         help="show the version of Natter and exit"
     )
     group.add_argument(
@@ -1381,7 +1382,7 @@ def natter_main(show_title = True):
     # if not specified, the target port is set to be the same as the outer port
     if not to_port:
         to_port = outer_addr[1]
-    
+
     # some exceptions: ForwardNone and ForwardTestServer are not real forward methods,
     # so let target ip and port equal to natter's
     if ForwardImpl in (ForwardNone, ForwardTestServer):
