@@ -315,13 +315,14 @@ class KeepAlive(object):
             timeout     = 3
         )
         sock.connect((self.host, self.port))
-        Logger.debug("keep-alive: Connected to host %s" % (
-            addr_to_uri((self.host, self.port), udp=self.udp)
-        ))
+        if not self.udp:
+            Logger.debug("keep-alive: Connected to host %s" % (
+                addr_to_uri((self.host, self.port), udp=self.udp)
+            ))
+            if self.reconn:
+                Logger.info("keep-alive: connection restored")
+        self.reconn = False
         self.sock = sock
-        if self.reconn and not self.udp:
-            Logger.info("keep-alive: connection restored")
-            self.reconn = False
 
     def keep_alive(self):
         if self.sock is None:
@@ -341,7 +342,7 @@ class KeepAlive(object):
     def _keep_alive_tcp(self):
         # send a HTTP request
         self.sock.sendall((
-            "GET /keep-alive HTTP/1.1\r\n"
+            "HEAD /natter-keep-alive HTTP/1.1\r\n"
             "Host: %s\r\n"
             "User-Agent: curl/8.0.0 (Natter)\r\n"
             "Accept: */*\r\n"
@@ -375,7 +376,7 @@ class KeepAlive(object):
         except socket.timeout as ex:
             if not buff:
                 raise ex
-            # temp fix: Keep-alive cause STUN socket timeout on Windows
+            # fix: Keep-alive cause STUN socket timeout on Windows
             if sys.platform == "win32":
                 self.reset()
             return
