@@ -1006,7 +1006,7 @@ class ForwardSocket(object):
         self.active = False
 
 
-class UPnPService:
+class UPnPService(object):
     def __init__(self):
         self.service_type   = None
         self.service_id     = None
@@ -1025,7 +1025,7 @@ class UPnPService:
         return False
 
 
-class UPnPDevice:
+class UPnPDevice(object):
     def __init__(self, ipaddr, xml_urls):
         self.ipaddr = ipaddr
         self.xml_urls = xml_urls
@@ -1139,7 +1139,7 @@ class UPnPDevice:
         return success
 
 
-class UPnPClient:
+class UPnPClient(object):
     def __init__(self):
         self.ssdp_addr      = ("239.255.255.250", 1900)
         self.sock_timeout   = 2
