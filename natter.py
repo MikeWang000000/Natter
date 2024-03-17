@@ -1006,6 +1006,194 @@ class ForwardSocket(object):
         self.active = False
 
 
+class UPnPService:
+    def __init__(self):
+        self.service_type   = None
+        self.service_id     = None
+        self.scpd_url       = None
+        self.control_url    = None
+        self.eventsub_url   = None
+
+    def __repr__(self):
+        return "<UPnPService service_type=%s, service_id=%s>" % (
+            repr(self.service_type), repr(self.service_id)
+        )
+
+    def is_valid(self):
+        if self.service_type and self.service_id and self.control_url:
+            return True
+        return False
+
+
+class UPnPDevice:
+    def __init__(self, ipaddr, xml_urls):
+        self.ipaddr = ipaddr
+        self.xml_urls = xml_urls
+        self.services = []
+
+    def __repr__(self):
+        return "<UPnPDevice ipaddr=%s>" % (
+            repr(self.ipaddr),
+        )
+
+    def _load_services(self):
+        if self.services:
+            return
+        services_d = {}     # service_id => UPnPService()
+        for url in self.xml_urls:
+            sd = self._get_srv_dict(url)
+            services_d.update(sd)
+        self.services.extend(services_d.values())
+
+    def _get_srv_dict(self, url):
+        xmlcontent = get_http_body(url).decode("utf-8", "ignore")
+        services_d = {}
+        srv_str_l = re.findall(r"<service\s*>([\s\S]+?)</service\s*>", xmlcontent)
+        for srv_str in srv_str_l:
+            srv = UPnPService()
+            m = re.search(r"<serviceType\s*>([^<]*?)</serviceType\s*>", srv_str)
+            if m:
+                srv.service_type    = m.group(1).strip()
+            m = re.search(r"<serviceId\s*>([^<]*?)</serviceId\s*>", srv_str)
+            if m:
+                srv.service_id      = m.group(1).strip()
+            m = re.search(r"<SCPDURL\s*>([^<]*?)</SCPDURL\s*>", srv_str)
+            if m:
+                srv.scpd_url        = full_url(m.group(1).strip(), url)
+            m = re.search(r"<controlURL\s*>([^<]*?)</controlURL\s*>", srv_str)
+            if m:
+                srv.control_url     = full_url(m.group(1).strip(), url)
+            m = re.search(r"<eventSubURL\s*>([^<]*?)</eventSubURL\s*>", srv_str)
+            if m:
+                srv.eventsub_url    = full_url(m.group(1).strip(), url)
+            if srv.is_valid():
+                services_d[srv.service_id] = srv
+        return services_d
+
+    def forward_port(self, proto, host, port, dest_host, dest_port, duration=0):
+        success = False
+        for srv in self.services:
+            if srv.service_type in (
+                "urn:schemas-upnp-org:service:WANIPConnection:1",
+                "urn:schemas-upnp-org:service:WANIPConnection:2",
+                "urn:schemas-upnp-org:service:WANPPPConnection:1"
+            ):
+                ctl_hostname, ctl_port, ctl_path = split_url(srv.control_url)
+                descpt = "Natter"
+                content = (
+                    "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n"
+                    "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"\r\n"
+                    "  s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">\r\n"
+                    "  <s:Body>\r\n"
+                    "    <m:AddPortMapping xmlns:m=\"%s\">\r\n"
+                    "      <NewRemoteHost>%s</NewRemoteHost>\r\n"
+                    "      <NewExternalPort>%s</NewExternalPort>\r\n"
+                    "      <NewProtocol>%s</NewProtocol>\r\n"
+                    "      <NewInternalPort>%s</NewInternalPort>\r\n"
+                    "      <NewInternalClient>%s</NewInternalClient>\r\n"
+                    "      <NewEnabled>1</NewEnabled>\r\n"
+                    "      <NewPortMappingDescription>%s</NewPortMappingDescription>\r\n"
+                    "      <NewLeaseDuration>%d</NewLeaseDuration>\r\n"
+                    "    </m:AddPortMapping>\r\n"
+                    "  </s:Body>\r\n"
+                    "</s:Envelope>\r\n" % (
+                        srv.service_type, host, port, proto, dest_port, dest_host, descpt, duration
+                    )
+                )
+                content_len = len(content.encode())
+                data = (
+                    "POST %s HTTP/1.1\r\n"
+                    "Host: %s:%d\r\n"
+                    "User-Agent: curl/8.0.0 (Natter)\r\n"
+                    "Accept: */*\r\n"
+                    "SOAPAction: \"%s#AddPortMapping\"\r\n"
+                    "Content-Type: text/xml\r\n"
+                    "Content-Length: %d\r\n"
+                    "Connection: close\r\n"
+                    "\r\n"
+                    "%s\r\n" % (ctl_path, ctl_hostname, ctl_port, srv.service_type, content_len, content)
+                ).encode()
+                sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+                sock.settimeout(5)
+                sock.connect((ctl_hostname, ctl_port))
+                sock.sendall(data)
+                response = b""
+                while True:
+                    buff = sock.recv(4096)
+                    if not buff:
+                        break
+                    response += buff
+                sock.close()
+                r = response.decode("utf-8", "ignore")
+                errno = errmsg = ""
+                m = re.search(r"<errorCode\s*>([^<]*?)</errorCode\s*>", r)
+                if m:
+                    errno = m.group(1).strip()
+                m = re.search(r"<errorDescription\s*>([^<]*?)</errorDescription\s*>", r)
+                if m:
+                    errmsg = m.group(1).strip()
+                if errno or errmsg:
+                    Logger.error("upnp: Error from device %s: [%s] %s" % (self.ipaddr, errno, errmsg))
+                else:
+                    success = True
+        return success
+
+
+class UPnPClient:
+    def __init__(self):
+        self.ssdp_addr      = ("239.255.255.250", 1900)
+        self.sock_timeout   = 2
+
+    def discover(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        sock.settimeout(self.sock_timeout)
+        dat01 = (
+            "M-SEARCH * HTTP/1.1\r\n"
+            "ST: ssdp:all\r\n"
+            "MX: 2\r\n"
+            "MAN: \"ssdp:discover\"\r\n"
+            "HOST: %s:%d\r\n"
+            "\r\n" % self.ssdp_addr
+        ).encode()
+
+        dat02 = (
+            "M-SEARCH * HTTP/1.1\r\n"
+            "ST: upnp:rootdevice\r\n"
+            "MX: 2\r\n"
+            "MAN: \"ssdp:discover\"\r\n"
+            "HOST: %s:%d\r\n"
+            "\r\n" % self.ssdp_addr
+        ).encode()
+
+        sock.sendto(dat01, self.ssdp_addr)
+        sock.sendto(dat02, self.ssdp_addr)
+
+        upnp_urls_d = {}
+        while True:
+            try:
+                buff, addr = sock.recvfrom(4096)
+                m = re.search(r"LOCATION: *(http://\S+)\s+", buff.decode("utf-8"))
+                if not m:
+                    continue
+                ipaddr = addr[0]
+                location = m.group(1)
+                Logger.debug("upnp: Got URL %s" % location)
+                if ipaddr in upnp_urls_d:
+                    upnp_urls_d[ipaddr].add(location)
+                else:
+                    upnp_urls_d[ipaddr] = set([location])
+            except socket.timeout:
+                break
+
+        devs = []
+        for ipaddr, urls in upnp_urls_d.items():
+            d = UPnPDevice(ipaddr, urls)
+            d._load_services()
+            devs.append(d)
+
+        return devs
+
+
 class NatterExitException(Exception):
     pass
 
@@ -1099,6 +1287,56 @@ def check_docker_network():
     uname_r_sfx = uname_r.rsplit("-").pop()
     if uname_r_sfx.lower() in ["linuxkit", "wsl2"] and hostname.lower() == "docker-desktop":
         raise RuntimeError("Network from Docker Desktop is not supported.")
+
+
+def get_http_body(url):
+    hostname, port, path = split_url(url)
+    sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    sock.settimeout(1)
+    sock.connect((hostname, port))
+    data = (
+        "GET %s HTTP/1.1\r\n"
+        "Host: %s\r\n"
+        "User-Agent: curl/8.0.0 (Natter)\r\n"
+        "Accept: */*\r\n"
+        "Connection: close\r\n"
+        "\r\n" % (path, hostname)
+    ).encode()
+    sock.sendall(data)
+    response = b""
+    while True:
+        buff = sock.recv(4096)
+        if not buff:
+            break
+        response += buff
+    sock.close()
+    if not response.startswith(b"HTTP/"):
+        raise ValueError("Invalid response from HTTP server")
+    s = response.split(b"\r\n\r\n", 1)
+    if len(s) != 2:
+        raise ValueError("Invalid response from HTTP server")
+    return s[1]
+
+
+def split_url(url):
+    if not url.startswith("http://"):
+        raise ValueError("Unsupported URL: %s" % url)
+    host, rpath = url.split("http://", 1)[1].split("/", 1)
+    path = "/" + rpath
+    if ":" in host:
+        hostname, port_ = host.split(":")
+        port = int(port_)
+    else:
+        hostname = host
+        port = 80
+    return hostname, port, path
+
+
+def full_url(u, refurl):
+    if not u.startswith("/"):
+        return u
+    hostname, port, _ = split_url(refurl)
+    return "http://%s:%d" % (hostname, port) + u
 
 
 def addr_to_str(addr):
