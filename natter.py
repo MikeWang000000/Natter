@@ -1007,13 +1007,15 @@ class ForwardSocket(object):
 
 
 class UPnPService(object):
-    def __init__(self):
-        self.service_type   = None
-        self.service_id     = None
-        self.scpd_url       = None
-        self.control_url    = None
-        self.eventsub_url   = None
-        self._sock_timeout  = 3
+    def __init__(self, bind_ip = None, interface = None):
+        self.service_type       = None
+        self.service_id         = None
+        self.scpd_url           = None
+        self.control_url        = None
+        self.eventsub_url       = None
+        self._sock_timeout      = 3
+        self._bind_ip           = bind_ip
+        self._bind_interface    = interface
 
     def __repr__(self):
         return "<UPnPService service_type=%s, service_id=%s>" % (
@@ -1075,7 +1077,12 @@ class UPnPService(object):
             "%s\r\n" % (ctl_path, ctl_hostname, ctl_port, self.service_type, content_len, content)
         ).encode()
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(self._sock_timeout)
+        socket_set_opt(
+            sock,
+            bind_addr   = (self._bind_ip, 0) if self._bind_ip else None,
+            interface   = self._bind_interface,
+            timeout     = self._sock_timeout
+        )
         sock.connect((ctl_hostname, ctl_port))
         sock.sendall(data)
         response = b""
@@ -1100,12 +1107,14 @@ class UPnPService(object):
 
 
 class UPnPDevice(object):
-    def __init__(self, ipaddr, xml_urls):
+    def __init__(self, ipaddr, xml_urls, bind_ip = None, interface = None):
         self.ipaddr = ipaddr
         self.xml_urls = xml_urls
         self.services = []
         self.forward_srv = None
         self._sock_timeout = 3
+        self._bind_ip = bind_ip
+        self._bind_interface = interface
 
     def __repr__(self):
         return "<UPnPDevice ipaddr=%s>" % (
@@ -1128,7 +1137,12 @@ class UPnPDevice(object):
     def _http_get(self, url):
         hostname, port, path = split_url(url)
         sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        sock.settimeout(self._sock_timeout)
+        socket_set_opt(
+            sock,
+            bind_addr   = (self._bind_ip, 0) if self._bind_ip else None,
+            interface   = self._bind_interface,
+            timeout     = self._sock_timeout
+        )
         sock.connect((hostname, port))
         data = (
             "GET %s HTTP/1.1\r\n"
@@ -1158,7 +1172,7 @@ class UPnPDevice(object):
         services_d = {}
         srv_str_l = re.findall(r"<service\s*>([\s\S]+?)</service\s*>", xmlcontent)
         for srv_str in srv_str_l:
-            srv = UPnPService()
+            srv = UPnPService(bind_ip=self._bind_ip, interface=self._bind_interface)
             m = re.search(r"<serviceType\s*>([^<]*?)</serviceType\s*>", srv_str)
             if m:
                 srv.service_type    = m.group(1).strip()
@@ -1180,17 +1194,19 @@ class UPnPDevice(object):
 
 
 class UPnPClient(object):
-    def __init__(self):
-        self.ssdp_addr      = ("239.255.255.250", 1900)
-        self.router         = None
-        self._sock_timeout  = 1
-        self._fwd_host      = None
-        self._fwd_port      = None
-        self._fwd_dest_host = None
-        self._fwd_dest_port = None
-        self._fwd_udp       = False
-        self._fwd_duration  = 0
-        self._fwd_started   = False
+    def __init__(self, bind_ip = None, interface = None):
+        self.ssdp_addr          = ("239.255.255.250", 1900)
+        self.router             = None
+        self._sock_timeout      = 1
+        self._fwd_host          = None
+        self._fwd_port          = None
+        self._fwd_dest_host     = None
+        self._fwd_dest_port     = None
+        self._fwd_udp           = False
+        self._fwd_duration      = 0
+        self._fwd_started       = False
+        self._bind_ip           = bind_ip
+        self._bind_interface    = interface
 
     def discover_router(self):
         router_l = []
@@ -1212,7 +1228,13 @@ class UPnPClient(object):
 
     def _discover(self):
         sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-        sock.settimeout(self._sock_timeout)
+        socket_set_opt(
+            sock,
+            reuse       = True,
+            bind_addr   = (self._bind_ip, 0) if self._bind_ip else None,
+            interface   = self._bind_interface,
+            timeout     = self._sock_timeout
+        )
         dat01 = (
             "M-SEARCH * HTTP/1.1\r\n"
             "ST: ssdp:all\r\n"
@@ -1253,7 +1275,7 @@ class UPnPClient(object):
 
         devs = []
         for ipaddr, urls in upnp_urls_d.items():
-            d = UPnPDevice(ipaddr, urls)
+            d = UPnPDevice(ipaddr, urls, bind_ip=self._bind_ip, interface=self._bind_interface)
             d._load_services()
             devs.append(d)
 
@@ -1681,7 +1703,7 @@ def natter_main(show_title = True):
     # UPnP
     upnp = None
     if upnp_enabled:
-        upnp = UPnPClient()
+        upnp = UPnPClient(bind_ip=natter_addr[0], interface=bind_interface)
         Logger.info()
         Logger.info("Scanning UPnP Devices...")
         upnp_router = upnp.discover_router()
