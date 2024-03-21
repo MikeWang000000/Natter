@@ -8,6 +8,7 @@
 | `-v`             | 详细模式，打印调试信息            | /                     | `-v`                | /                    |
 | `-q`             | 映射地址改变时立即退出            | /                     | `-q`                | /                    |
 | `-u`             | UDP 模式                          | /                     | `-u`                | /                    |
+| `-U`             | 启用 UPnP/IGD 发现                | /                     | `-U`                | /                    |
 | `-k <interval>`  | 每次保活的间隔秒数                | 整数 >=1              | `-k 20`             | `15`                 |
 | `-s <address>`   | STUN 服务器名或地址               | 域名<br>域名:端口号<br>IP地址<br>IP地址:端口号 | `-s stun01.example.com`<br>`-s stun02.example.com:1478`<br>`-s 202.64.12.121`<br>`-s 202.64.12.121:2478` | 内置 STUN 服务器列表 |
 | `-h <address>`   | 保活服务器名或地址                | 域名<br>域名:端口号<br>IP地址<br>IP地址:端口号 | `-h example.com`<br>`-h example.com:8080`<br>`-h 202.64.34.101`<br>`-h 202.64.34.101:8888` | TCP模式：<br>`www.baidu.com:80`<br>UDP模式：<br>`8.8.8.8:53` |

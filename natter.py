@@ -1005,6 +1005,303 @@ class ForwardSocket(object):
         self.active = False
 
 
+class UPnPService(object):
+    def __init__(self, bind_ip = None, interface = None):
+        self.service_type       = None
+        self.service_id         = None
+        self.scpd_url           = None
+        self.control_url        = None
+        self.eventsub_url       = None
+        self._sock_timeout      = 3
+        self._bind_ip           = bind_ip
+        self._bind_interface    = interface
+
+    def __repr__(self):
+        return "<UPnPService service_type=%s, service_id=%s>" % (
+            repr(self.service_type), repr(self.service_id)
+        )
+
+    def is_valid(self):
+        if self.service_type and self.service_id and self.control_url:
+            return True
+        return False
+
+    def is_forward(self):
+        if self.service_type in (
+            "urn:schemas-upnp-org:service:WANIPConnection:1",
+            "urn:schemas-upnp-org:service:WANIPConnection:2",
+            "urn:schemas-upnp-org:service:WANPPPConnection:1"
+        ) and self.service_id and self.control_url:
+            return True
+        return False
+
+    def forward_port(self, host, port, dest_host, dest_port, udp=False, duration=0):
+        if not self.is_forward():
+            raise NotImplementedError("Unsupported service type: %s" % self.service_type)
+
+        proto = "UDP" if udp else "TCP"
+        ctl_hostname, ctl_port, ctl_path = split_url(self.control_url)
+        descpt = "Natter"
+        content = (
+            "<?xml version=\"1.0\" encoding=\"utf-8\"?>\r\n"
+            "<s:Envelope xmlns:s=\"http://schemas.xmlsoap.org/soap/envelope/\"\r\n"
+            "  s:encodingStyle=\"http://schemas.xmlsoap.org/soap/encoding/\">\r\n"
+            "  <s:Body>\r\n"
+            "    <m:AddPortMapping xmlns:m=\"%s\">\r\n"
+            "      <NewRemoteHost>%s</NewRemoteHost>\r\n"
+            "      <NewExternalPort>%s</NewExternalPort>\r\n"
+            "      <NewProtocol>%s</NewProtocol>\r\n"
+            "      <NewInternalPort>%s</NewInternalPort>\r\n"
+            "      <NewInternalClient>%s</NewInternalClient>\r\n"
+            "      <NewEnabled>1</NewEnabled>\r\n"
+            "      <NewPortMappingDescription>%s</NewPortMappingDescription>\r\n"
+            "      <NewLeaseDuration>%d</NewLeaseDuration>\r\n"
+            "    </m:AddPortMapping>\r\n"
+            "  </s:Body>\r\n"
+            "</s:Envelope>\r\n" % (
+                self.service_type, host, port, proto, dest_port, dest_host, descpt, duration
+            )
+        )
+        content_len = len(content.encode())
+        data = (
+            "POST %s HTTP/1.1\r\n"
+            "Host: %s:%d\r\n"
+            "User-Agent: curl/8.0.0 (Natter)\r\n"
+            "Accept: */*\r\n"
+            "SOAPAction: \"%s#AddPortMapping\"\r\n"
+            "Content-Type: text/xml\r\n"
+            "Content-Length: %d\r\n"
+            "Connection: close\r\n"
+            "\r\n"
+            "%s\r\n" % (ctl_path, ctl_hostname, ctl_port, self.service_type, content_len, content)
+        ).encode()
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        socket_set_opt(
+            sock,
+            bind_addr   = (self._bind_ip, 0) if self._bind_ip else None,
+            interface   = self._bind_interface,
+            timeout     = self._sock_timeout
+        )
+        sock.connect((ctl_hostname, ctl_port))
+        sock.sendall(data)
+        response = b""
+        while True:
+            buff = sock.recv(4096)
+            if not buff:
+                break
+            response += buff
+        sock.close()
+        r = response.decode("utf-8", "ignore")
+        errno = errmsg = ""
+        m = re.search(r"<errorCode\s*>([^<]*?)</errorCode\s*>", r)
+        if m:
+            errno = m.group(1).strip()
+        m = re.search(r"<errorDescription\s*>([^<]*?)</errorDescription\s*>", r)
+        if m:
+            errmsg = m.group(1).strip()
+        if errno or errmsg:
+            Logger.error("upnp: Error from device %s: [%s] %s" % (self.ipaddr, errno, errmsg))
+            return False
+        return True
+
+
+class UPnPDevice(object):
+    def __init__(self, ipaddr, xml_urls, bind_ip = None, interface = None):
+        self.ipaddr = ipaddr
+        self.xml_urls = xml_urls
+        self.services = []
+        self.forward_srv = None
+        self._sock_timeout = 3
+        self._bind_ip = bind_ip
+        self._bind_interface = interface
+
+    def __repr__(self):
+        return "<UPnPDevice ipaddr=%s>" % (
+            repr(self.ipaddr),
+        )
+
+    def _load_services(self):
+        if self.services:
+            return
+        services_d = {}     # service_id => UPnPService()
+        for url in self.xml_urls:
+            sd = self._get_srv_dict(url)
+            services_d.update(sd)
+        self.services.extend(services_d.values())
+        for srv in self.services:
+            if srv.is_forward():
+                self.forward_srv = srv
+                break
+
+    def _http_get(self, url):
+        hostname, port, path = split_url(url)
+        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+        socket_set_opt(
+            sock,
+            bind_addr   = (self._bind_ip, 0) if self._bind_ip else None,
+            interface   = self._bind_interface,
+            timeout     = self._sock_timeout
+        )
+        sock.connect((hostname, port))
+        data = (
+            "GET %s HTTP/1.1\r\n"
+            "Host: %s\r\n"
+            "User-Agent: curl/8.0.0 (Natter)\r\n"
+            "Accept: */*\r\n"
+            "Connection: close\r\n"
+            "\r\n" % (path, hostname)
+        ).encode()
+        sock.sendall(data)
+        response = b""
+        while True:
+            buff = sock.recv(4096)
+            if not buff:
+                break
+            response += buff
+        sock.close()
+        if not response.startswith(b"HTTP/"):
+            raise ValueError("Invalid response from HTTP server")
+        s = response.split(b"\r\n\r\n", 1)
+        if len(s) != 2:
+            raise ValueError("Invalid response from HTTP server")
+        return s[1]
+
+    def _get_srv_dict(self, url):
+        xmlcontent = self._http_get(url).decode("utf-8", "ignore")
+        services_d = {}
+        srv_str_l = re.findall(r"<service\s*>([\s\S]+?)</service\s*>", xmlcontent)
+        for srv_str in srv_str_l:
+            srv = UPnPService(bind_ip=self._bind_ip, interface=self._bind_interface)
+            m = re.search(r"<serviceType\s*>([^<]*?)</serviceType\s*>", srv_str)
+            if m:
+                srv.service_type    = m.group(1).strip()
+            m = re.search(r"<serviceId\s*>([^<]*?)</serviceId\s*>", srv_str)
+            if m:
+                srv.service_id      = m.group(1).strip()
+            m = re.search(r"<SCPDURL\s*>([^<]*?)</SCPDURL\s*>", srv_str)
+            if m:
+                srv.scpd_url        = full_url(m.group(1).strip(), url)
+            m = re.search(r"<controlURL\s*>([^<]*?)</controlURL\s*>", srv_str)
+            if m:
+                srv.control_url     = full_url(m.group(1).strip(), url)
+            m = re.search(r"<eventSubURL\s*>([^<]*?)</eventSubURL\s*>", srv_str)
+            if m:
+                srv.eventsub_url    = full_url(m.group(1).strip(), url)
+            if srv.is_valid():
+                services_d[srv.service_id] = srv
+        return services_d
+
+
+class UPnPClient(object):
+    def __init__(self, bind_ip = None, interface = None):
+        self.ssdp_addr          = ("239.255.255.250", 1900)
+        self.router             = None
+        self._sock_timeout      = 1
+        self._fwd_host          = None
+        self._fwd_port          = None
+        self._fwd_dest_host     = None
+        self._fwd_dest_port     = None
+        self._fwd_udp           = False
+        self._fwd_duration      = 0
+        self._fwd_started       = False
+        self._bind_ip           = bind_ip
+        self._bind_interface    = interface
+
+    def discover_router(self):
+        router_l = []
+        try:
+            devs = self._discover()
+            for dev in devs:
+                if dev.forward_srv:
+                    router_l.append(dev)
+        except (OSError, socket.error) as ex:
+            Logger.error("upnp: failed to discover router: %s" % ex)
+        if not router_l:
+            self.router = None
+        elif len(router_l) > 1:
+            Logger.warning("upnp: multiple routers found: %s" % (router_l,))
+            self.router = router_l[0]
+        else:
+            self.router = router_l[0]
+        return self.router
+
+    def _discover(self):
+        sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        socket_set_opt(
+            sock,
+            reuse       = True,
+            bind_addr   = (self._bind_ip, 0) if self._bind_ip else None,
+            interface   = self._bind_interface,
+            timeout     = self._sock_timeout
+        )
+        dat01 = (
+            "M-SEARCH * HTTP/1.1\r\n"
+            "ST: ssdp:all\r\n"
+            "MX: 2\r\n"
+            "MAN: \"ssdp:discover\"\r\n"
+            "HOST: %s:%d\r\n"
+            "\r\n" % self.ssdp_addr
+        ).encode()
+
+        dat02 = (
+            "M-SEARCH * HTTP/1.1\r\n"
+            "ST: upnp:rootdevice\r\n"
+            "MX: 2\r\n"
+            "MAN: \"ssdp:discover\"\r\n"
+            "HOST: %s:%d\r\n"
+            "\r\n" % self.ssdp_addr
+        ).encode()
+
+        sock.sendto(dat01, self.ssdp_addr)
+        sock.sendto(dat02, self.ssdp_addr)
+
+        upnp_urls_d = {}
+        while True:
+            try:
+                buff, addr = sock.recvfrom(4096)
+                m = re.search(r"LOCATION: *(http://[^\[]\S+)\s+", buff.decode("utf-8"))
+                if not m:
+                    continue
+                ipaddr = addr[0]
+                location = m.group(1)
+                Logger.debug("upnp: Got URL %s" % location)
+                if ipaddr in upnp_urls_d:
+                    upnp_urls_d[ipaddr].add(location)
+                else:
+                    upnp_urls_d[ipaddr] = set([location])
+            except socket.timeout:
+                break
+
+        devs = []
+        for ipaddr, urls in upnp_urls_d.items():
+            d = UPnPDevice(ipaddr, urls, bind_ip=self._bind_ip, interface=self._bind_interface)
+            d._load_services()
+            devs.append(d)
+
+        return devs
+
+    def forward(self, host, port, dest_host, dest_port, udp=False, duration=0):
+        if not self.router:
+            raise RuntimeError("No router is available")
+        self.router.forward_srv.forward_port(host, port, dest_host, dest_port, udp, duration)
+        self._fwd_host      = host
+        self._fwd_port      = port
+        self._fwd_dest_host = dest_host
+        self._fwd_dest_port = dest_port
+        self._fwd_udp       = udp
+        self._fwd_duration  = duration
+        self._fwd_started   = True
+
+    def renew(self):
+        if not self._fwd_started:
+            raise RuntimeError("UPnP forward not started")
+        self.router.forward_srv.forward_port(
+            self._fwd_host, self._fwd_port, self._fwd_dest_host,
+            self._fwd_dest_port, self._fwd_udp, self._fwd_duration
+        )
+        Logger.debug("upnp: OK")
+
+
 class NatterExitException(Exception):
     pass
 
@@ -1100,6 +1397,29 @@ def check_docker_network():
         raise RuntimeError("Network from Docker Desktop is not supported.")
 
 
+def split_url(url):
+    if not url.startswith("http://"):
+        raise ValueError("Unsupported URL: %s" % url)
+    host, rpath = url.split("http://", 1)[1].split("/", 1)
+    if '[' in host:
+        raise ValueError("Unsupported URL: %s" % url)
+    path = "/" + rpath
+    if ":" in host:
+        hostname, port_ = host.split(":")
+        port = int(port_)
+    else:
+        hostname = host
+        port = 80
+    return hostname, port, path
+
+
+def full_url(u, refurl):
+    if not u.startswith("/"):
+        return u
+    hostname, port, _ = split_url(refurl)
+    return "http://%s:%d" % (hostname, port) + u
+
+
 def addr_to_str(addr):
     return "%s:%d" % addr
 
@@ -1178,6 +1498,9 @@ def natter_main(show_title = True):
         "-u", action="store_true", help="UDP mode"
     )
     group.add_argument(
+        "-U", action="store_true", help="enable UPnP/IGD discovery"
+    )
+    group.add_argument(
         "-k", type=int, metavar="<interval>", default=15,
         help="seconds between each keep-alive"
     )
@@ -1223,6 +1546,7 @@ def natter_main(show_title = True):
     args = argp.parse_args()
     verbose = args.v
     udp_mode = args.u
+    upnp_enabled = args.U
     interval = args.k
     stun_list = args.s
     keepalive_srv = args.h
@@ -1386,6 +1710,17 @@ def natter_main(show_title = True):
     forwarder.start_forward(natter_addr[0], natter_addr[1], to_addr[0], to_addr[1], udp=udp_mode)
     NatterExit.set_atexit(forwarder.stop_forward)
 
+    # UPnP
+    upnp = None
+    if upnp_enabled:
+        upnp = UPnPClient(bind_ip=natter_addr[0], interface=bind_interface)
+        Logger.info()
+        Logger.info("Scanning UPnP Devices...")
+        upnp_router = upnp.discover_router()
+        if upnp_router:
+            Logger.info("[UPnP] Found router %s" % upnp_router.ipaddr)
+            upnp.forward("", bind_port, bind_ip, bind_port, udp=udp_mode, duration=interval*3)
+
     # Display route information
     Logger.info()
     route_str = ""
@@ -1467,6 +1802,11 @@ def natter_main(show_title = True):
                 Logger.error("keep-alive: connection broken: %s" % ex)
             keep_alive.reset()
             need_recheck = True
+        if upnp:
+            try:
+                upnp.renew()
+            except (OSError, socket.error) as ex:
+                Logger.error("upnp: failed to renew upnp: %s" % ex)
         sleep_sec = interval - (time.time() - ts)
         if sleep_sec > 0:
             time.sleep(sleep_sec)

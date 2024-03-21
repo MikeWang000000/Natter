@@ -48,7 +48,7 @@ Natter
 ## Usage
 
 ```
-usage: natter.py [--version] [--help] [-v] [-q] [-u] [-k <interval>]
+usage: natter.py [--version] [--help] [-v] [-q] [-u] [-U] [-k <interval>]
                  [-s <address>] [-h <address>] [-e <path>] [-i <interface>]
                  [-b <port>] [-m <method>] [-t <address>] [-p <port>] [-r]
 
@@ -60,6 +60,7 @@ options:
   -v              verbose mode, printing debug messages
   -q              exit when mapped address is changed
   -u              UDP mode
+  -U              enable UPnP/IGD discovery
   -k <interval>   seconds between each keep-alive
   -s <address>    hostname or address to STUN server
   -h <address>    hostname or address to keep-alive server
