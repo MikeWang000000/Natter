@@ -24,7 +24,6 @@ import sys
 import json
 import time
 import errno
-import shlex
 import atexit
 import codecs
 import random
