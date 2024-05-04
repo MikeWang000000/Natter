@@ -1263,6 +1263,8 @@ def natter_main(show_title = True):
     if not stun_list:
         stun_list = [
             "fwa.lifesizecloud.com",
+            "global.turn.twilio.com",
+            "turn.cloudflare.com",
             "stun.isp.net.au",
             "stun.nextcloud.com",
             "stun.freeswitch.org",
@@ -1270,16 +1272,25 @@ def natter_main(show_title = True):
             "stunserver.stunprotocol.org",
             "stun.sipnet.com",
             "stun.radiojar.com",
-            "stun.sonetel.com",
-            "stun.voipgate.com"
+            "stun.sonetel.com"
         ]
-        if udp_mode:
-            stun_list = ["stun.miwifi.com", "stun.qq.com", "stun.chat.bilibili.com"] + stun_list
+        if not udp_mode:
+            stun_list = [
+                "turn.cloud-rtc.com:80"
+            ] + stun_list
+        else:
+            stun_list = [
+                "stun.miwifi.com",
+                "stun.chat.bilibili.com",
+                "stun.hitv.com",
+                "stun.cdnbye.com",
+                "stun.douyucdn.cn:18000"
+            ] + stun_list
 
     if not keepalive_srv:
         keepalive_srv = "www.baidu.com"
         if udp_mode:
-            keepalive_srv = "8.8.8.8"
+            keepalive_srv = "119.29.29.29"
 
     stun_srv_list = []
     for item in stun_list:

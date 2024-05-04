@@ -91,6 +91,8 @@ class StunTest(object):
     # Servers in this list must be compatible with rfc5389 or rfc8489
     stun_server_tcp = [
         "fwa.lifesizecloud.com",
+        "global.turn.twilio.com",
+        "turn.cloudflare.com",
         "stun.voip.blackberry.com",
         "stun.radiojar.com",
         "stun.isp.net.au"
@@ -98,8 +100,9 @@ class StunTest(object):
     # Servers in this list must be compatible with rfc3489, with "change IP" and "change port" functions available
     stun_server_udp = [
         "stun.miwifi.com",
-        "stun.qq.com",
-        "stun.chat.bilibili.com"
+        "stun.chat.bilibili.com",
+        "stun.hitv.com",
+        "stun.cdnbye.com"
     ]
     # Port test server. ref: https://github.com/transmission/portcheck
     port_test_server = "portcheck.transmissionbt.com"
