@@ -27,6 +27,7 @@ import codecs
 
 __version__ = "2.1.0-dev"
 
+
 def fix_codecs(codec_list = ["utf-8", "idna"]):
     missing_codecs = []
     for codec_name in codec_list:
@@ -39,7 +40,8 @@ def fix_codecs(codec_list = ["utf-8", "idna"]):
             return codecs.CodecInfo(codecs.ascii_encode, codecs.ascii_decode, name="ascii")
     if missing_codecs:
         codecs.register(search_codec)
-        
+
+
 def new_socket_reuse(family, type):
     sock = socket.socket(family, type)
     if hasattr(socket, "SO_REUSEADDR"):
