@@ -1398,18 +1398,17 @@ def check_docker_network():
 
 
 def split_url(url):
-    if not url.startswith("http://"):
+    m = re.match(
+        r"^http://([^\[\]:/]+)(?:\:([0-9]+))?(/\S*)?$", url
+    )
+    if not m:
         raise ValueError("Unsupported URL: %s" % url)
-    host, rpath = url.split("http://", 1)[1].split("/", 1)
-    if '[' in host:
-        raise ValueError("Unsupported URL: %s" % url)
-    path = "/" + rpath
-    if ":" in host:
-        hostname, port_ = host.split(":")
-        port = int(port_)
-    else:
-        hostname = host
-        port = 80
+    hostname, port_str, path = m.groups()
+    port = 80
+    if port_str:
+        port = int(port_str)
+    if not path:
+        path = "/"
     return hostname, port, path
 
 
