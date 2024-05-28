@@ -1006,7 +1006,8 @@ class ForwardSocket(object):
 
 
 class UPnPService(object):
-    def __init__(self, bind_ip = None, interface = None):
+    def __init__(self, device, bind_ip = None, interface = None):
+        self.device             = device
         self.service_type       = None
         self.service_id         = None
         self.scpd_url           = None
@@ -1100,7 +1101,9 @@ class UPnPService(object):
         if m:
             errmsg = m.group(1).strip()
         if errno or errmsg:
-            Logger.error("upnp: Error from device %s: [%s] %s" % (self.ipaddr, errno, errmsg))
+            Logger.error("upnp: Error from service %s of device %s: [%s] %s" % (
+                self.service_type, self.device, errno, errmsg
+            ))
             return False
         return True
 
@@ -1171,7 +1174,7 @@ class UPnPDevice(object):
         services_d = {}
         srv_str_l = re.findall(r"<service\s*>([\s\S]+?)</service\s*>", xmlcontent)
         for srv_str in srv_str_l:
-            srv = UPnPService(bind_ip=self._bind_ip, interface=self._bind_interface)
+            srv = UPnPService(self, bind_ip=self._bind_ip, interface=self._bind_interface)
             m = re.search(r"<serviceType\s*>([^<]*?)</serviceType\s*>", srv_str)
             if m:
                 srv.service_type    = m.group(1).strip()
