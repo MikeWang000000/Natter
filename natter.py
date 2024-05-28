@@ -1170,7 +1170,11 @@ class UPnPDevice(object):
         return s[1]
 
     def _get_srv_dict(self, url):
-        xmlcontent = self._http_get(url).decode("utf-8", "ignore")
+        try:
+            xmlcontent = self._http_get(url).decode("utf-8", "ignore")
+        except (OSError, socket.error, ValueError) as ex:
+            Logger.error("upnp: failed to load service from %s: %s" % (url, ex))
+            return
         services_d = {}
         srv_str_l = re.findall(r"<service\s*>([\s\S]+?)</service\s*>", xmlcontent)
         for srv_str in srv_str_l:
@@ -1714,14 +1718,26 @@ def natter_main(show_title = True):
 
     # UPnP
     upnp = None
+    upnp_router = None
+    upnp_ready = False
+
     if upnp_enabled:
         upnp = UPnPClient(bind_ip=natter_addr[0], interface=bind_interface)
         Logger.info()
         Logger.info("Scanning UPnP Devices...")
-        upnp_router = upnp.discover_router()
-        if upnp_router:
-            Logger.info("[UPnP] Found router %s" % upnp_router.ipaddr)
+        try:
+            upnp_router = upnp.discover_router()
+        except (OSError, socket.error, ValueError) as ex:
+            Logger.error("upnp: failed to discover router: %s" % ex)
+
+    if upnp_router:
+        Logger.info("[UPnP] Found router %s" % upnp_router.ipaddr)
+        try:
             upnp.forward("", bind_port, bind_ip, bind_port, udp=udp_mode, duration=interval*3)
+        except (OSError, socket.error, ValueError) as ex:
+            Logger.error("upnp: failed to forward port: %s" % ex)
+        else:
+            upnp_ready = True
 
     # Display route information
     Logger.info()
@@ -1804,7 +1820,7 @@ def natter_main(show_title = True):
                 Logger.error("keep-alive: connection broken: %s" % ex)
             keep_alive.reset()
             need_recheck = True
-        if upnp:
+        if upnp_ready:
             try:
                 upnp.renew()
             except (OSError, socket.error) as ex:
