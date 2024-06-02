@@ -1602,12 +1602,13 @@ def natter_main(show_title = True):
             "stunserver.stunprotocol.org",
             "stun.sipnet.com",
             "stun.radiojar.com",
-            "stun.sonetel.com"
+            "stun.sonetel.com",
+            "stun.telnyx.com"
         ]
         if not udp_mode:
-            stun_list = [
+            stun_list = stun_list + [
                 "turn.cloud-rtc.com:80"
-            ] + stun_list
+            ]
         else:
             stun_list = [
                 "stun.miwifi.com",
