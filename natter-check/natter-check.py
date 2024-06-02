@@ -25,7 +25,7 @@ import socket
 import struct
 import codecs
 
-__version__ = "2.1.1-dev"
+__version__ = "2.1.1"
 
 
 def fix_codecs(codec_list = ["utf-8", "idna"]):
