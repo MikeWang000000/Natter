@@ -130,7 +130,7 @@ class CloudFlareDNS:
             f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records"
         )
         for rec_data in data["result"]:
-            if rec_data["type"] == "SRV" and rec_data["data"]["name"] == name:
+            if rec_data["type"] == "SRV" and rec_data["name"] == name:
                 rec_id = rec_data["id"]
                 return rec_id
         return None
@@ -150,6 +150,7 @@ class CloudFlareDNS:
                     "target":   target,
                     "weight":   weight
                 },
+                "name":     name,
                 "proxied":  False,
                 "type":     "SRV",
                 "ttl":      ttl
@@ -173,6 +174,7 @@ class CloudFlareDNS:
                     "target":   target,
                     "weight":   weight
                 },
+                "name":     name,
                 "proxied":  False,
                 "type":     "SRV",
                 "ttl":      ttl
