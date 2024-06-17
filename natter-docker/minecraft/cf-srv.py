@@ -147,7 +147,7 @@ class CloudFlareDNS:
                     "target":   target,
                     "weight":   weight
                 },
-                "name":     name,
+                "name":     f"{service}{protocol}.{name}",
                 "proxied":  False,
                 "type":     "SRV",
                 "ttl":      ttl
@@ -168,7 +168,7 @@ class CloudFlareDNS:
                     "target":   target,
                     "weight":   weight
                 },
-                "name":     name,
+                "name":     f"{service}{protocol}.{name}",
                 "proxied":  False,
                 "type":     "SRV",
                 "ttl":      ttl
