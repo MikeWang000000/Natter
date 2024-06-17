@@ -142,11 +142,8 @@ class CloudFlareDNS:
             f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records",
             data={
                 "data": {
-                    "name":     name,
                     "port":     port,
                     "priority": priority,
-                    "proto":    protocol,
-                    "service":  service,
                     "target":   target,
                     "weight":   weight
                 },
@@ -166,11 +163,8 @@ class CloudFlareDNS:
             f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{rec_id}",
             data={
                 "data": {
-                    "name":     name,
                     "port":     port,
                     "priority": priority,
-                    "proto":    protocol,
-                    "service":  service,
                     "target":   target,
                     "weight":   weight
                 },
