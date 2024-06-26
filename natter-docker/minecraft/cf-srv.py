@@ -46,7 +46,7 @@ class CloudFlareDNS:
         zone_id = self._find_zone_id(name)
         if not zone_id:
             raise ValueError("%s is not on CloudFlare" % name)
-        rec_id = self._find_srv_record(zone_id, name)
+        rec_id = self._find_srv_record(zone_id, name, service, protocol)
         if not rec_id:
             rec_id = self._create_srv_record(zone_id, name, service,
                                              protocol, port, name)
@@ -124,13 +124,13 @@ class CloudFlareDNS:
         )
         return data["result"]["id"]
 
-    def _find_srv_record(self, zone_id, name):
+    def _find_srv_record(self, zone_id, name, service, protocol):
         name = name.lower()
         data = self._url_req(
             f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records"
         )
         for rec_data in data["result"]:
-            if rec_data["type"] == "SRV" and rec_data["data"]["name"] == name:
+            if rec_data["type"] == "SRV" and rec_data["name"] == f"{service}{protocol}.{name}":
                 rec_id = rec_data["id"]
                 return rec_id
         return None
@@ -142,14 +142,12 @@ class CloudFlareDNS:
             f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records",
             data={
                 "data": {
-                    "name":     name,
                     "port":     port,
                     "priority": priority,
-                    "proto":    protocol,
-                    "service":  service,
                     "target":   target,
                     "weight":   weight
                 },
+                "name":     f"{service}{protocol}.{name}",
                 "proxied":  False,
                 "type":     "SRV",
                 "ttl":      ttl
@@ -165,14 +163,12 @@ class CloudFlareDNS:
             f"https://api.cloudflare.com/client/v4/zones/{zone_id}/dns_records/{rec_id}",
             data={
                 "data": {
-                    "name":     name,
                     "port":     port,
                     "priority": priority,
-                    "proto":    protocol,
-                    "service":  service,
                     "target":   target,
                     "weight":   weight
                 },
+                "name":     f"{service}{protocol}.{name}",
                 "proxied":  False,
                 "type":     "SRV",
                 "ttl":      ttl
