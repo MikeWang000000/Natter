@@ -1107,96 +1107,226 @@ class UPnPService(object):
             return False
         return True
 
+import socket
+import re
+import xml.etree.ElementTree as ET
+from xml.sax.saxutils import escape
 
-class UPnPDevice(object):
-    def __init__(self, ipaddr, xml_urls, bind_ip = None, interface = None):
-        self.ipaddr = ipaddr
-        self.xml_urls = xml_urls
-        self.services = []
-        self.forward_srv = None
+class UPnPService(object):
+    def __init__(self, device, bind_ip=None, interface=None):
+        self.device = device
+        self.service_type = None
+        self.service_id = None
+        self.scpd_url = None
+        self.control_url = None
+        self.eventsub_url = None
         self._sock_timeout = 3
         self._bind_ip = bind_ip
         self._bind_interface = interface
 
     def __repr__(self):
-        return "<UPnPDevice ipaddr=%s>" % (
-            repr(self.ipaddr),
-        )
+        return f"<UPnPService service_type={repr(self.service_type)}, service_id={repr(self.service_id)}>"
 
-    def _load_services(self):
-        if self.services:
-            return
-        services_d = {}     # service_id => UPnPService()
-        for url in self.xml_urls:
-            sd = self._get_srv_dict(url)
-            services_d.update(sd)
-        self.services.extend(services_d.values())
-        for srv in self.services:
-            if srv.is_forward():
-                self.forward_srv = srv
-                break
+    def is_valid(self):
+        return bool(self.service_type and self.service_id and self.control_url)
 
-    def _http_get(self, url):
-        hostname, port, path = split_url(url)
-        sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-        socket_set_opt(
-            sock,
-            bind_addr   = (self._bind_ip, 0) if self._bind_ip else None,
-            interface   = self._bind_interface,
-            timeout     = self._sock_timeout
-        )
-        sock.connect((hostname, port))
-        data = (
-            "GET %s HTTP/1.1\r\n"
-            "Host: %s\r\n"
-            "User-Agent: curl/8.0.0 (Natter)\r\n"
-            "Accept: */*\r\n"
-            "Connection: close\r\n"
-            "\r\n" % (path, hostname)
-        ).encode()
-        sock.sendall(data)
-        response = b""
-        while True:
-            buff = sock.recv(4096)
-            if not buff:
-                break
-            response += buff
-        sock.close()
-        if not response.startswith(b"HTTP/"):
-            raise ValueError("Invalid response from HTTP server")
-        s = response.split(b"\r\n\r\n", 1)
-        if len(s) != 2:
-            raise ValueError("Invalid response from HTTP server")
-        return s[1]
+    def is_forward(self):
+        return self.service_type in (
+            "urn:schemas-upnp-org:service:WANIPConnection:1",
+            "urn:schemas-upnp-org:service:WANIPConnection:2",
+            "urn:schemas-upnp-org:service:WANPPPConnection:1"
+        ) and bool(self.service_id and self.control_url)
 
-    def _get_srv_dict(self, url):
+    def forward_port(self, host, port, dest_host, dest_port, udp=False, duration=0):
+        if not self.is_forward():
+            raise NotImplementedError(f"Unsupported service type: {self.service_type}")
+
+        # 参数校验和预处理
         try:
-            xmlcontent = self._http_get(url).decode("utf-8", "ignore")
-        except (OSError, socket.error, ValueError) as ex:
-            Logger.error("upnp: failed to load service from %s: %s" % (url, ex))
-            return
-        services_d = {}
-        srv_str_l = re.findall(r"<service\s*>([\s\S]+?)</service\s*>", xmlcontent)
-        for srv_str in srv_str_l:
-            srv = UPnPService(self, bind_ip=self._bind_ip, interface=self._bind_interface)
-            m = re.search(r"<serviceType\s*>([^<]*?)</serviceType\s*>", srv_str)
-            if m:
-                srv.service_type    = m.group(1).strip()
-            m = re.search(r"<serviceId\s*>([^<]*?)</serviceId\s*>", srv_str)
-            if m:
-                srv.service_id      = m.group(1).strip()
-            m = re.search(r"<SCPDURL\s*>([^<]*?)</SCPDURL\s*>", srv_str)
-            if m:
-                srv.scpd_url        = full_url(m.group(1).strip(), url)
-            m = re.search(r"<controlURL\s*>([^<]*?)</controlURL\s*>", srv_str)
-            if m:
-                srv.control_url     = full_url(m.group(1).strip(), url)
-            m = re.search(r"<eventSubURL\s*>([^<]*?)</eventSubURL\s*>", srv_str)
-            if m:
-                srv.eventsub_url    = full_url(m.group(1).strip(), url)
-            if srv.is_valid():
-                services_d[srv.service_id] = srv
-        return services_d
+            port = int(port)
+            dest_port = int(dest_port)
+            duration = int(duration)
+        except ValueError:
+            raise ValueError("Invalid port or duration value")
+
+        # XML内容生成（带转义）
+        proto = "UDP" if udp else "TCP"
+        ctl_hostname, ctl_port, ctl_path = self._split_url(self.control_url)
+        descpt = "Natter"
+
+        content = (
+            '<?xml version="1.0" encoding="utf-8"?>\r\n'
+            '<s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
+            's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/">\r\n'
+            '  <s:Body>\r\n'
+            f'    <m:AddPortMapping xmlns:m="{escape(self.service_type)}">\r\n'
+            f'      <NewRemoteHost>{escape(host)}</NewRemoteHost>\r\n'
+            f'      <NewExternalPort>{escape(str(port))}</NewExternalPort>\r\n'
+            f'      <NewProtocol>{proto}</NewProtocol>\r\n'
+            f'      <NewInternalPort>{escape(str(dest_port))}</NewInternalPort>\r\n'
+            f'      <NewInternalClient>{escape(dest_host)}</NewInternalClient>\r\n'
+            '      <NewEnabled>1</NewEnabled>\r\n'
+            f'      <NewPortMappingDescription>{escape(descpt)}</NewPortMappingDescription>\r\n'
+            f'      <NewLeaseDuration>{duration}</NewLeaseDuration>\r\n'
+            '    </m:AddPortMapping>\r\n'
+            '  </s:Body>\r\n'
+            '</s:Envelope>\r\n'
+        )
+
+        # HTTP请求构造
+        content_bytes = content.encode('utf-8')
+        request = (
+            f'POST {ctl_path} HTTP/1.1\r\n'
+            f'Host: {ctl_hostname}:{ctl_port}\r\n'
+            'User-Agent: UPnP/1.0\r\n'
+            'Accept: */*\r\n'
+            f'SOAPAction: "{self.service_type}#AddPortMapping"\r\n'
+            'Content-Type: text/xml; charset="utf-8"\r\n'
+            f'Content-Length: {len(content_bytes)}\r\n'
+            'Connection: close\r\n\r\n'
+        ).encode('ascii') + content_bytes
+
+        # Socket操作（带异常处理）
+        success = False
+        try:
+            with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as sock:
+                self._configure_socket(sock)
+                sock.connect((ctl_hostname, ctl_port))
+                sock.sendall(request)
+                response = self._receive_all(sock)
+        except Exception as e:
+            Logger.error(f"UPnP request failed: {str(e)}")
+            return False
+
+        # 响应处理
+        return self._process_response(response)
+
+    def _split_url(self, url):
+        # 实现URL解析逻辑（示例实现）
+        from urllib.parse import urlparse
+        parsed = urlparse(url)
+        return parsed.hostname, parsed.port or 80, parsed.path
+
+    def _configure_socket(self, sock):
+        """配置socket选项"""
+        sock.settimeout(self._sock_timeout)
+        if self._bind_ip:
+            sock.bind((self._bind_ip, 0))
+        if self._bind_interface and hasattr(socket, 'SO_BINDTODEVICE'):
+            sock.setsockopt(
+                socket.SOL_SOCKET,
+                socket.SO_BINDTODEVICE,
+                self._bind_interface.encode()
+            )
+
+    def _receive_all(self, sock):
+        """高效接收所有响应数据"""
+        response = b''
+        try:
+            while True:
+                chunk = sock.recv(4096)
+                if not chunk:
+                    break
+                response += chunk
+                # 提前终止检查（如果包含完整的HTTP头）
+                if b'\r\n\r\n' in response:
+                    headers, _, body = response.partition(b'\r\n\r\n')
+                    if b'Content-Length: ' in headers:
+                        length = int(headers.split(b'Content-Length: ')[1].split(b'\r\n')[0])
+                        if len(body) >= length:
+                            break
+        except socket.timeout:
+            pass
+        return response
+
+    def _process_response(self, response):
+        """处理HTTP响应"""
+        try:
+            # 解析HTTP状态码
+            header_part, _, body_part = response.partition(b'\r\n\r\n')
+            headers = header_part.decode('ascii', 'ignore').split('\r\n')
+            if not headers:
+                return False
+
+            status_line = headers[0]
+            if not status_line.startswith('HTTP/'):
+                Logger.error("Invalid HTTP response")
+                return False
+
+            try:
+                status_code = int(status_line.split()[1])
+            except (IndexError, ValueError):
+                status_code = 0
+
+            # 处理非200状态码
+            if 200 <= status_code < 300:
+                pass  # 继续处理body
+            else:
+                Logger.error(f"HTTP error: {status_line}")
+                return False
+
+            # XML解析尝试
+            body_str = body_part.decode('utf-8', 'replace')
+            try:
+                return self._parse_xml_response(body_str)
+            except ET.ParseError:
+                return self._parse_regex_response(body_str)
+
+        except UnicodeDecodeError:
+            Logger.error("Invalid response encoding")
+            return False
+
+    def _parse_xml_response(self, body):
+        """使用XML解析器处理响应"""
+        try:
+            root = ET.fromstring(body)
+        except ET.ParseError:
+            return False
+
+        namespaces = {
+            's': 'http://schemas.xmlsoap.org/soap/envelope/',
+            'u': self.service_type,
+            'upnp': 'urn:schemas-upnp-org:control-1-0'
+        }
+
+        # 查找SOAP Fault
+        fault = root.find('.//s:Fault', namespaces)
+        if fault is None:
+            return True  # 没有错误
+
+        # 提取错误信息
+        error_code = None
+        error_desc = None
+
+        # 尝试不同命名空间结构
+        for ns in [namespaces['u'], namespaces['upnp']]:
+            error = fault.find(f'.//{{ {ns} }}errorCode')
+            if error is not None:
+                error_code = error.text
+                break
+
+        for ns in [namespaces['u'], namespaces['upnp']]:
+            desc = fault.find(f'.//{{ {ns} }}errorDescription')
+            if desc is not None:
+                error_desc = desc.text
+                break
+
+        # 日志记录
+        Logger.error(f"UPnP error: [{error_code or 'Unknown'}] {error_desc or 'No description'}")
+        return False
+
+    def _parse_regex_response(self, body):
+        """正则表达式后备解析"""
+        error_code = re.search(r'<errorCode[^>]*>(.*?)</errorCode>', body, re.I)
+        error_desc = re.search(r'<errorDescription[^>]*>(.*?)</errorDescription>', body, re.I)
+        
+        if error_code or error_desc:
+            code = error_code.group(1) if error_code else 'Unknown'
+            desc = error_desc.group(1) if error_desc else 'No description'
+            Logger.error(f"UPnP error: [{code}] {desc}")
+            return False
+        return True  # 没有检测到错误
+
 
 
 class UPnPClient(object):
