@@ -1129,6 +1129,8 @@ class UPnPDevice(object):
         services_d = {}     # service_id => UPnPService()
         for url in self.xml_urls:
             sd = self._get_srv_dict(url)
+            if not sd:
+                continue
             services_d.update(sd)
         self.services.extend(services_d.values())
         for srv in self.services:
