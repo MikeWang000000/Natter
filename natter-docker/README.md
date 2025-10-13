@@ -104,3 +104,10 @@ BT 类程序的特点是，需要向 Tracker 宣告自己的端口号。
 订阅服务本身由 HTTP 跳转实现。  
 本仓库提供了以下用例，需要填写您的 CloudFlare API 令牌：  
 - [V2Fly-Nginx-CloudFlare](v2fly-nginx-cloudflare)
+
+### 隐藏域名端口号
+
+利用隐藏端口号访问域名，实现不加端口号访问域名。 
+隐藏域名端口号通过 CloudFlare 的回源规则(origin-rules)实现。
+本仓库提供了以下用例，需要填写您的 CloudFlare API 令牌：
+- [Cloudflare-Origin](cloudflare-origin)

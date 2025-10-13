@@ -1,0 +1,11 @@
+version: "3"
+services:
+  natter-cf-origin:
+    command: -e /opt/cf-origin.py -p 80 -r
+    volumes:
+      - ./cf-origin.py:/opt/cf-origin.py
+    environment:
+      - TZ=Asia/Shanghai
+    network_mode: host
+    image: nattertool/natter
+    restart: always
