@@ -1288,7 +1288,7 @@ class UPnPClient(object):
             self.router = None
         elif len(router_l) > 1:
             Logger.warning("upnp: multiple routers found: %s" % (router_l,))
-            self.router = router_l[0]
+            self.router = router_l[int(input('select router(0-%d):'%(len(router_l)-1,)))]
         else:
             self.router = router_l[0]
         return self.router
