@@ -1486,10 +1486,9 @@ class UPnPClient(object):
             while True:
                 try:
                     buff, addr = sock.recvfrom(4096)
-                    m = re.search(
-                        r"LOCATION: *(http://[^\[]\S+)\s+",
-                        buff.decode("utf-8"),
-                    )
+                    m = re.search(r"[Ll][Oo][Cc][Aa][Tt][Ii][Oo][Nn]: "
+                                  r"*([Hh][Tt][Tt][Pp]://[^\[]\S+)\s+",
+                                  buff.decode("utf-8"))
                     if not m:
                         continue
                     ipaddr = addr[0]
