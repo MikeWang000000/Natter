@@ -78,3 +78,4 @@ Natter 仓库中包含一些已经写好的通知脚本。您只需修改脚本�
 - [`tr.sh`](../natter-docker/transmission/tr.sh)：Shell 脚本，用于更新 Transmission 监听端口，使其向 tracker 通告的端口号与外部端口一致；
 - [`cf-srv.py`](../natter-docker/minecraft/cf-srv.py)：Python 脚本，用于更新 Cloudflare 域名的 A 记录和 SRV 记录，使得 Minecraft 等服务可通过域名直接访问。
 - [`cf-redir.py`](../natter-docker/nginx-cloudflare/cf-redir.py)：Python 脚本，用于实现 Cloudflare 的跳转功能，使得直接访问域名即可动态跳转到目标端口。
+- [`cf-aio.py`](../scripts/cf-aio.py)：Python 脚本，整合了用于实现在 Cloudflare 记录信息的脚本。 详细使用参考 [CloudFlare All In One 脚本使用说明](cf-aio.md) 。
